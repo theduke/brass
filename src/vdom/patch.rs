@@ -91,7 +91,6 @@ fn set_attribute(tag: dom::Tag, elem: web_sys::Element, attribute: dom::Attr, va
 
 fn patch_node_tag<C: Component>(
     ctx: &mut ComponentState<C>,
-    parent: Node,
     mut old: VTag<C::Msg>,
     new: &mut VTag<C::Msg>,
 ) {
@@ -190,6 +189,31 @@ fn patch_node_tag<C: Component>(
     new.node = Some(node);
 }
 
+#[inline]
+fn remove_node<C: Component>(ctx: &mut ComponentState<C>, node: VNode<C::Msg>, parent: Node) {
+    match node {
+        VNode::Empty => {}
+        VNode::Text(txt) => {
+            if let Some(node) = &txt.node {
+                parent.remove_child(node).ok();
+            }
+        }
+        VNode::Tag(tag) => {
+            remove_tag(ctx, tag, parent);
+        }
+    }
+}
+
+#[inline]
+fn remove_tag<C: Component>(ctx: &mut ComponentState<C>, tag: VTag<C::Msg>, parent: Node) {
+    for listener in tag.listeners {
+        ctx.event_manager.recycle(listener.callback_id);
+    }
+    if let Some(node) = &tag.node {
+        parent.remove_child(node).ok();
+    }
+}
+
 pub(super) fn patch<C: Component>(
     ctx: &mut ComponentState<C>,
     parent: Node,
@@ -201,9 +225,7 @@ pub(super) fn patch<C: Component>(
         (old, VNode::Empty) => {
             // TODO: recycle old node?
             if let VNode::Tag(tag) = old {
-                for listener in tag.listeners {
-                    ctx.event_manager.recycle(listener.callback_id);
-                }
+                remove_tag(ctx, tag, parent);
             }
             None
         }
@@ -219,9 +241,11 @@ pub(super) fn patch<C: Component>(
                 new_text.node = Some(node.clone());
                 return Some(node);
             }
-            // TODO: recycle old node if appropriate?
 
-            // Old node is not text, so create new node.
+            // Remove old.
+            remove_node(ctx, old, parent.clone());
+
+            // Create new
             let text_node = ctx.create_text_node(&new_text.value);
             let next_sibling = sibling.as_ref().and_then(|s| s.next_sibling());
             // Note: ignore error for perf.
@@ -235,16 +259,13 @@ pub(super) fn patch<C: Component>(
             render(ctx, parent, None, tag)
         }
         (VNode::Tag(old_tag), VNode::Tag(new_tag)) => {
-            if let Some(ref node) = old_tag.node {
+            if let Some(_) = old_tag.node {
                 if old_tag.tag == new_tag.tag {
                     // Same tag, so we can patch
-                    patch_node_tag(ctx, parent, old_tag, new_tag);
+                    patch_node_tag(ctx, old_tag, new_tag);
                     return new_tag.node.clone();
                 } else {
-                    // Remove old node and create new one.
-                    // TODO: recycle old?
-                    // NOTE: ignore error for perf.
-                    let _ = parent.remove_child(&node);
+                    remove_tag(ctx, old_tag, parent.clone());
                 }
             }
 
