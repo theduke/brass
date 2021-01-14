@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="utf-8">
+    <title>Semantic</title>
+    <script type="module">
+        import init from "/pkg/copper_todo.js"
+        init()
+            .then(() => console.log('UI launched'))
+            .catch(err => console.error('Could not start UI: ' + err));
+    </script>
+</head>
+
+<body>
+    <div id="app"></div>
+</body>
+
+</html>
+
