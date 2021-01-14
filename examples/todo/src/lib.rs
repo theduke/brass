@@ -56,10 +56,9 @@ impl copper::Component for App {
             }
             Msg::ToggleDone(id) => {
                 self.todos.get_mut(id).map(|x| x.done = !x.done);
-            }
-            // Msg::Remove(id) => {
-            //     self.todos.remove(id);
-            // }
+            } // Msg::Remove(id) => {
+              //     self.todos.remove(id);
+              // }
         }
     }
 

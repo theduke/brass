@@ -1,7 +1,9 @@
 use wasm_bindgen::JsCast;
 
-use super::{EventHandler, component::{Component, ComponentHandle}};
-
+use super::{
+    component::{Component, ComponentHandle},
+    EventHandler,
+};
 
 pub type EventCallbackClosure = wasm_bindgen::closure::Closure<dyn Fn(web_sys::Event)>;
 
@@ -52,7 +54,10 @@ impl<C: Component> EventManager<C> {
             .map(|x| x.as_ref().unchecked_ref())
     }
 
-    pub(crate) fn build(&mut self, handler: EventHandler<C::Msg>) -> (EventCallbackId, &js_sys::Function) {
+    pub(crate) fn build(
+        &mut self,
+        handler: EventHandler<C::Msg>,
+    ) -> (EventCallbackId, &js_sys::Function) {
         if let Some(index) = self.idle.pop() {
             // Old handler can be reused.
             self.handlers[index] = handler;

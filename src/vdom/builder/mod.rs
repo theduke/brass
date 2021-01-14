@@ -1,6 +1,6 @@
 use crate::dom::{Attr, Event, Tag};
 
-use super::{EventHandler, Listener, VNode, VTag, VText, event_manager::EventCallbackId};
+use super::{event_manager::EventCallbackId, EventHandler, Listener, VNode, VTag, VText};
 
 pub struct TagBuilder<M> {
     tag: VTag<M>,
@@ -40,8 +40,9 @@ impl<M> TagBuilder<M> {
         self
     }
 
-    pub fn and_if<F, T>(mut self, flag: bool, f: F) -> Self 
-    where T: DomExtend<M>,
+    pub fn and_if<F, T>(mut self, flag: bool, f: F) -> Self
+    where
+        T: DomExtend<M>,
         F: FnOnce() -> T,
     {
         if flag {
@@ -85,7 +86,11 @@ impl<M> TagBuilder<M> {
         self
     }
 
-    pub fn on_captured(mut self, event: Event, handler: impl Fn(web_sys::Event) -> Option<M> + 'static) -> Self {
+    pub fn on_captured(
+        mut self,
+        event: Event,
+        handler: impl Fn(web_sys::Event) -> Option<M> + 'static,
+    ) -> Self {
         self.tag.listeners.push(Listener {
             event,
             handler: EventHandler::Closure(std::rc::Rc::new(handler)),
@@ -315,7 +320,6 @@ pub fn li_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
 pub fn small<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Small)
 }
-
 
 #[inline]
 pub fn small_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
