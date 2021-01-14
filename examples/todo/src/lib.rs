@@ -3,9 +3,7 @@ use wasm_bindgen::JsCast;
 
 use copper::{
     dom::{Attr, Event},
-    nop,
-    vdom::{button, div, h2, h4, input, li, span_with, text, ul},
-    Effect,
+    vdom::{component::Context, div, h2, h4, input, li, span_with, text, ul},
 };
 
 type TodoId = usize;
@@ -27,24 +25,21 @@ enum Msg {
     Change(String),
     Add,
     ToggleDone(TodoId),
-    Remove(TodoId),
+    // Remove(TodoId),
 }
 
 impl copper::Component for App {
     type Properties = ();
     type Msg = Msg;
 
-    fn init(props: Self::Properties) -> (Self, Effect<Self::Msg>) {
-        (
-            Self {
-                new_todo: String::new(),
-                todos: Vec::new(),
-            },
-            Effect::none(),
-        )
+    fn init(_props: Self::Properties, _ctx: &Context<Self::Msg>) -> Self {
+        Self {
+            new_todo: String::new(),
+            todos: Vec::new(),
+        }
     }
 
-    fn update(&mut self, msg: Self::Msg) -> copper::Effect<Self::Msg> {
+    fn update(&mut self, msg: Self::Msg, _ctx: &Context<Self::Msg>) {
         match msg {
             Msg::Change(value) => {
                 self.new_todo = value;
@@ -62,11 +57,10 @@ impl copper::Component for App {
             Msg::ToggleDone(id) => {
                 self.todos.get_mut(id).map(|x| x.done = !x.done);
             }
-            Msg::Remove(id) => {
-                self.todos.remove(id);
-            }
+            // Msg::Remove(id) => {
+            //     self.todos.remove(id);
+            // }
         }
-        Effect::None
     }
 
     fn render(&self) -> copper::VNode<Self::Msg> {

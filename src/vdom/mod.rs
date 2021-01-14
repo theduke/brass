@@ -188,7 +188,11 @@ impl<M> VNode<M> {
             VNode::Tag(tag) => VNode::Tag(VTag {
                 tag: tag.tag,
                 attributes: tag.attributes,
-                children: tag.children.into_iter().map(|c| c.map(mapper.clone())).collect(),
+                children: tag
+                    .children
+                    .into_iter()
+                    .map(|c| c.map(mapper.clone()))
+                    .collect(),
                 key: tag.key,
                 listeners: tag
                     .listeners
@@ -246,7 +250,7 @@ impl Drop for EffectGuard {
     }
 }
 
-pub enum Effect<M> {
+pub(crate) enum Effect<M> {
     None,
     SkipRender,
     // Delay {
@@ -268,6 +272,17 @@ impl<M> Default for Effect<M> {
 }
 
 impl<M> Effect<M> {
+    pub fn and(&mut self, eff: Self) {
+        if let Effect::None = self {
+            *self = eff
+        } else if let Self::Multi(items) = self {
+            items.push(eff)
+        } else {
+            let mut old = Effect::None;
+            std::mem::swap(&mut old, self);
+            *self = Self::Multi(vec![old, eff])
+        }
+    }
 
     pub fn map<M2, F>(self, mapper: F) -> Effect<M2>
     where

@@ -7,16 +7,127 @@ use crate::dom;
 
 use super::{
     event_manager::{EventCallbackId, EventManager},
-    Effect, EventHandler, VNode,
+    Effect, EffectGuard, EventHandler, VNode,
 };
+
+enum ContextState<M> {
+    Direct { effect: Rc<RefCell<Effect<M>>> },
+    Mapped { register: Rc<dyn Fn(Effect<M>)> },
+}
+
+impl<M> Clone for ContextState<M> {
+    fn clone(&self) -> Self {
+        match self {
+            ContextState::Direct { effect } => Self::Direct {
+                effect: effect.clone(),
+            },
+            ContextState::Mapped { register } => Self::Mapped {
+                register: register.clone(),
+            },
+        }
+    }
+}
+
+pub struct Context<M> {
+    state: ContextState<M>,
+}
+
+impl<M> Context<M> {
+    fn new() -> Self {
+        Self {
+            state: ContextState::Direct {
+                effect: Rc::new(RefCell::new(Effect::None)),
+            },
+        }
+    }
+
+    fn into_effect(self) -> Effect<M> {
+        match self.state {
+            ContextState::Direct { effect } => Rc::try_unwrap(effect)
+                .ok()
+                .expect("Context is still borroed")
+                .into_inner(),
+            ContextState::Mapped { register } => {
+                #[allow(unreachable_code)]
+                debug_assert!(
+                    false,
+                    panic!("Internal error: cant retreive effect for mapped request")
+                );
+                Effect::none()
+            }
+        }
+    }
+
+    fn add_effect(&self, eff: Effect<M>) {
+        match &self.state {
+            ContextState::Direct { effect } => {
+                effect.borrow_mut().and(eff);
+            }
+            ContextState::Mapped { register } => {
+                register(eff);
+            }
+        }
+    }
+
+    pub fn skip_render(&self) {
+        self.add_effect(Effect::SkipRender);
+    }
+
+    pub fn run<F>(&self, f: F) -> EffectGuard
+    where
+        F: std::future::Future<Output = Option<M>> + 'static,
+    {
+        match &self.state {
+            ContextState::Direct { effect } => {
+                let (eff, guard) = Effect::future(f);
+                effect.borrow_mut().and(eff);
+                guard
+            }
+            ContextState::Mapped { register } => {
+                let (eff, guard) = Effect::future(f);
+                register(eff);
+                guard
+            }
+        }
+    }
+
+    pub fn run_unguarded<F>(&self, f: F)
+    where
+        F: std::future::Future<Output = Option<M>> + 'static,
+    {
+        self.add_effect(Effect::future_unguarded(f));
+    }
+
+    pub(crate) fn duplicate(&self) -> Self {
+        Self {
+            state: self.state.clone(),
+        }
+    }
+
+    pub fn map<M2, F>(&self, mapper: F) -> Context<M2>
+    where
+        M: 'static,
+        M2: 'static,
+        F: Fn(M2) -> M + 'static + Clone,
+    {
+        let ctx = self.duplicate();
+        Context {
+            state: ContextState::Mapped {
+                register: Rc::new(move |eff| {
+                    // TODO: why is the clone neccessary?
+                    ctx.add_effect(eff.map(mapper.clone()));
+                }),
+            },
+        }
+    }
+}
 
 pub trait Component: std::fmt::Debug + Sized + 'static {
     type Properties;
     type Msg: std::fmt::Debug + 'static;
 
-    fn init(props: Self::Properties) -> (Self, Effect<Self::Msg>);
-
-    fn update(&mut self, msg: Self::Msg) -> Effect<Self::Msg>;
+    fn init(props: Self::Properties, context: &Context<Self::Msg>) -> Self;
+    fn update(&mut self, msg: Self::Msg, context: &Context<Self::Msg>);
     fn render(&self) -> VNode<Self::Msg>;
 }
 
@@ -91,13 +202,22 @@ impl<C: Component> ComponentState<C> {
                 false
             }
             Effect::Multi(items) => {
-                todo!()
+                let mut skip = false;
+                for item in items {
+                    if self.apply_effect(item, handle) {
+                        skip = true;
+                    }
+                }
+                skip
             }
         }
     }
 
     fn update(&mut self, msg: C::Msg, handle: &ComponentHandle<C>) {
-        let effect = self.component.update(msg);
+        let context = Context::new();
+
+        self.component.update(msg, &context);
+        let effect = context.into_effect();
         self.apply_effect(effect, handle);
 
         if !self.animation_pending {
@@ -163,7 +283,9 @@ impl<C: Component> ComponentHandle<C> {
         let window = web_sys::window().expect("Could not retrieve window");
         let document = window.document().expect("Could not get document");
 
-        let (component, effect) = C::init(props);
+        let context = Context::new();
+        let component = C::init(props, &context);
+        let effect = context.into_effect();
 
         let state = Rc::new(RefCell::new(ComponentState {
             window,
@@ -210,39 +332,39 @@ pub trait ComponentMapper<P: Component, C: Component> {
     fn map_parent_msg(msg: P::Msg) -> Option<C::Msg>;
 }
 
-#[derive(Debug)]
-pub struct ChildComponent<P, C> {
-    child: C,
-    marker: PhantomData<P>,
-}
+// #[derive(Debug)]
+// pub struct ChildComponent<P, C> {
+//     child: C,
+//     marker: PhantomData<P>,
+// }
 
-impl<P, C> Component for ChildComponent<P, C>
-where
-    P: Component,
-    C: Component,
-    C: ComponentMapper<P, C>,
-{
-    type Properties = C::Properties;
-    type Msg = P::Msg;
+// impl<P, C> Component for ChildComponent<P, C>
+// where
+//     P: Component,
+//     C: Component,
+//     C: ComponentMapper<P, C>,
+// {
+//     type Properties = C::Properties;
+//     type Msg = P::Msg;
 
-    fn init(props: Self::Properties) -> (Self, Effect<Self::Msg>) {
-        let (child, eff) = C::init(props);
-        let s = Self {
-            child,
-            marker: PhantomData,
-        };
-        (s, eff.map(C::map_msg))
-    }
+//     fn init(props: Self::Properties) -> (Self, Effect<Self::Msg>) {
+//         let (child, eff) = C::init(props);
+//         let s = Self {
+//             child,
+//             marker: PhantomData,
+//         };
+//         (s, eff.map(C::map_msg))
+//     }
 
-    fn update(&mut self, msg: Self::Msg) -> Effect<Self::Msg> {
-        if let Some(child_msg) = C::map_parent_msg(msg) {
-            self.child.update(child_msg).map(C::map_msg)
-        } else {
-            Effect::none()
-        }
-    }
+//     fn update(&mut self, msg: Self::Msg) -> Effect<Self::Msg> {
+//         if let Some(child_msg) = C::map_parent_msg(msg) {
+//             self.child.update(child_msg).map(C::map_msg)
+//         } else {
+//             Effect::none()
+//         }
+//     }
 
-    fn render(&self) -> VNode<Self::Msg> {
-        self.child.render().map(C::map_msg)
-    }
-}
+//     fn render(&self) -> VNode<Self::Msg> {
+//         self.child.render().map(C::map_msg)
+//     }
+// }
