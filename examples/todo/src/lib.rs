@@ -3,10 +3,56 @@ use wasm_bindgen::JsCast;
 
 use copper::{
     dom::{Attr, Event},
-    vdom::{component::Context, div, h2, h4, input, li, span_with, text, ul},
+    vdom::{
+        button, component, component::Context, div, div_with, h4, input, li, span_with, text, ul,
+    },
+    Component,
 };
 
 type TodoId = usize;
+
+#[derive(Debug)]
+struct Counter {
+    count: u32,
+    nest: bool,
+}
+
+impl Component for Counter {
+    type Properties = bool;
+
+    type Msg = u32;
+
+    fn init(props: Self::Properties, _context: Context<Self::Msg>) -> Self {
+        Self {
+            count: 0,
+            nest: props,
+        }
+    }
+
+    fn on_property_change(
+        &mut self,
+        _new_props: Self::Properties,
+        mut context: Context<Self::Msg>,
+    ) {
+        context.skip_render();
+    }
+
+    fn update(&mut self, msg: Self::Msg, _context: Context<Self::Msg>) {
+        self.count += msg;
+    }
+
+    fn render(&self) -> copper::VNode<Self::Msg> {
+        let increment = button().and("+").on(Event::Click, |_| Some(1));
+        div()
+            .and("Counter: ")
+            .and(self.count.to_string())
+            .and(div_with(increment))
+            .and_if(self.nest, || {
+                div_with(component::<Counter, _>(false)).attr(Attr::Style, "padding-left: 2rem;")
+            })
+            .build()
+    }
+}
 
 #[derive(Debug)]
 struct Todo {
@@ -32,14 +78,18 @@ impl copper::Component for App {
     type Properties = ();
     type Msg = Msg;
 
-    fn init(_props: Self::Properties, _ctx: &Context<Self::Msg>) -> Self {
+    fn init(_props: Self::Properties, _ctx: Context<Self::Msg>) -> Self {
         Self {
             new_todo: String::new(),
             todos: Vec::new(),
         }
     }
 
-    fn update(&mut self, msg: Self::Msg, _ctx: &Context<Self::Msg>) {
+    fn on_property_change(&mut self, new_props: Self::Properties, mut context: Context<Self::Msg>) {
+        context.skip_render()
+    }
+
+    fn update(&mut self, msg: Self::Msg, _ctx: Context<Self::Msg>) {
         match msg {
             Msg::Change(value) => {
                 self.new_todo = value;
@@ -63,7 +113,7 @@ impl copper::Component for App {
     }
 
     fn render(&self) -> copper::VNode<Self::Msg> {
-        let editor = div().and(text("New Todo: ")).and(
+        let editor = div().and(text("New Todo2: ")).and(
             input()
                 .attr(Attr::Value, &self.new_todo)
                 .on(Event::Input, |ev| {
@@ -113,9 +163,11 @@ impl copper::Component for App {
         }
 
         div()
-            .and(h2().and(text("Copper - Todo")))
-            .and(editor)
-            .and(todos)
+            .and(component::<Counter, _>(true))
+            .and_iter((0..400).map(|_| component::<Counter, _>(true)))
+            // .and(h2().and(text("Copper - Todo")))
+            // .and(editor)
+            // .and(todos)
             .build()
 
         // let mut buttons = div().class("buttons");
@@ -141,11 +193,13 @@ pub fn boot() {
         report_logs_in_timings: false,
         use_console_color: false,
     });
-    std::panic::set_hook(Box::new(|info| {
-        tracing::error!(?info, "crashed");
-    }));
+
+    std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
     tracing::info!("tracing initialized");
-    let node = copper::query_selector("#app").expect("Could not get app");
-    copper::boot::<App>((), node);
+    let elem = copper::query_selector("#app")
+        .expect("Could not get app")
+        .dyn_into()
+        .unwrap();
+    copper::boot::<App>((), elem);
 }

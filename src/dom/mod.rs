@@ -6,6 +6,3 @@ pub use tag::*;
 
 mod attribute;
 pub use attribute::*;
-
-mod vdom;
-pub use vdom::*;

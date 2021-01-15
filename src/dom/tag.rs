@@ -1,3 +1,4 @@
+/// A DOM tag name.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Tag {
     Address,

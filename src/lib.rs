@@ -19,6 +19,15 @@ pub fn query_selector(sel: &str) -> Option<web_sys::Node> {
         .map(|x| x.unchecked_into())
 }
 
-pub fn boot<C: Component>(props: C::Properties, node: web_sys::Node) {
-    vdom::component::ComponentHandle::<C>::boot(props, node)
+pub fn boot<C: Component>(props: C::Properties, node: web_sys::Element) {
+    vdom::component::AppHandle::<C>::boot(props, node, None)
+}
+
+pub fn boot_routed<C, F>(props: C::Properties, node: web_sys::Element, mapper: F)
+where
+    C: Component,
+    F: Fn(String) -> Option<C::Msg> + 'static,
+{
+    let mapper = Box::new(mapper);
+    vdom::component::AppHandle::<C>::boot(props, node, Some(mapper))
 }

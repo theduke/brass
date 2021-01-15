@@ -1,6 +1,15 @@
-use crate::dom::{Attr, Event, Tag};
+use crate::{
+    dom::{Attr, Event, Tag},
+    Component,
+};
 
-use super::{event_manager::EventCallbackId, EventHandler, Listener, VNode, VTag, VText};
+use super::{
+    event_manager::EventCallbackId, EventHandler, Listener, VComponent, VNode, VTag, VText,
+};
+
+pub fn component<C: Component, M>(props: C::Properties) -> VNode<M> {
+    VNode::Component(VComponent::new::<C>(props))
+}
 
 pub struct TagBuilder<M> {
     tag: VTag<M>,

@@ -1,3 +1,4 @@
+/// A DOM attribute that can be set on elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Attr {
     Accept,

@@ -5,22 +5,101 @@ mod patch;
 mod builder;
 pub use builder::*;
 
+use component::{AnyBox, ComponentId};
+use futures::{future::FutureExt, stream::StreamExt};
+use wasm_bindgen::JsValue;
+
 use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
-use crate::dom;
+use crate::{dom, Component};
+
+use self::component::ComponentSpec;
+
+/// Wrapper around a [`web_sys::Node`].
+/// A fake JsValue (JsValue::UNDEFINED) is used for the empty state.
+/// This reduces branching compared to using an Option<_>.
+#[derive(Debug, Clone)]
+pub(crate) struct OptionalNode(web_sys::Node);
+
+impl AsRef<web_sys::Node> for OptionalNode {
+    #[inline]
+    fn as_ref(&self) -> &web_sys::Node {
+        &self.0
+    }
+}
+
+impl OptionalNode {
+    #[inline]
+    pub fn new(node: web_sys::Node) -> Self {
+        Self(node)
+    }
+
+    #[inline]
+    pub fn new_none() -> Self {
+        use wasm_bindgen::JsCast;
+        Self(wasm_bindgen::JsValue::UNDEFINED.unchecked_into())
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        let v: &wasm_bindgen::JsValue = self.0.as_ref();
+        v == &JsValue::UNDEFINED
+    }
+
+    #[inline]
+    pub fn as_option(&self) -> Option<&web_sys::Node> {
+        if self.is_none() {
+            None
+        } else {
+            Some(&self.0)
+        }
+    }
+}
+
+/// Wrapper around a [`web_sys::Element`].
+/// A fake JsValue (JsValue::UNDEFINED) is used for the empty state.
+/// This reduces branching compared to using an Option<_>.
+#[derive(Debug, Clone)]
+pub(crate) struct OptionalElement(web_sys::Element);
+
+impl AsRef<web_sys::Element> for OptionalElement {
+    #[inline]
+    fn as_ref(&self) -> &web_sys::Element {
+        &self.0
+    }
+}
+
+impl OptionalElement {
+    #[inline]
+    pub fn new(elem: web_sys::Element) -> Self {
+        Self(elem)
+    }
+
+    #[inline]
+    pub fn new_none() -> Self {
+        use wasm_bindgen::JsCast;
+        Self(wasm_bindgen::JsValue::UNDEFINED.unchecked_into())
+    }
+
+    #[inline]
+    pub fn is_none(&self) -> bool {
+        let v: &wasm_bindgen::JsValue = self.0.as_ref();
+        v == &JsValue::UNDEFINED
+    }
+}
 
 // TODO: use cow or https://github.com/maciejhirsz/beef ?
 #[derive(Debug)]
 pub struct VText {
     value: String,
-    node: Option<web_sys::Node>,
+    node: OptionalNode,
 }
 
 impl VText {
     pub fn new(value: impl Into<String>) -> Self {
         Self {
             value: value.into(),
-            node: None,
+            node: OptionalNode::new_none(),
         }
     }
 }
@@ -140,7 +219,8 @@ pub struct VTag<M> {
     // TODO: implement keying support for the rendering
     key: Option<String>,
     listeners: Vec<Listener<M>>,
-    node: Option<web_sys::Node>,
+
+    element: OptionalElement,
 }
 
 impl<M> VTag<M> {
@@ -151,7 +231,7 @@ impl<M> VTag<M> {
             children: Vec::new(),
             key: None,
             listeners: Vec::new(),
-            node: None,
+            element: OptionalElement::new_none(),
         }
     }
 }
@@ -163,16 +243,54 @@ impl<M> std::fmt::Debug for VTag<M> {
             .field("attributes", &self.attributes)
             .field("key", &self.key)
             // .field("listeners", &self.listeners)
-            .field("node", &self.node)
+            .field("node", &self.element)
             .finish()
     }
 }
 
 #[derive(Debug)]
+pub struct VComponent {
+    spec: ComponentSpec,
+    id: ComponentId,
+}
+
+impl VComponent {
+    pub fn new<C: Component>(props: C::Properties) -> Self {
+        Self {
+            spec: ComponentSpec::new::<C>(props),
+            id: ComponentId::new_none(),
+        }
+    }
+
+    pub fn is_same_constructor(&self, other: &Self) -> bool {
+        self.spec.is_same_constructor(&other.spec)
+    }
+}
+
 pub enum VNode<M> {
     Empty,
     Text(VText),
     Tag(VTag<M>),
+    Component(VComponent),
+}
+
+impl<M> std::fmt::Debug for VNode<M> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            VNode::Empty => {
+                write!(f, "Vnode::Empty")
+            }
+            VNode::Text(t) => {
+                write!(f, "Vnode::Text({:?})", t)
+            }
+            VNode::Tag(t) => {
+                write!(f, "Vnode::Tag({:?})", t)
+            }
+            VNode::Component(t) => {
+                write!(f, "Vnode::Component({:?})", t)
+            }
+        }
+    }
 }
 
 impl<M> VNode<M> {
@@ -199,8 +317,9 @@ impl<M> VNode<M> {
                     .into_iter()
                     .map(|l| l.map(mapper.clone()))
                     .collect(),
-                node: tag.node,
+                element: tag.element,
             }),
+            VNode::Component(c) => VNode::Component(c),
         }
     }
 }
@@ -258,11 +377,19 @@ pub(crate) enum Effect<M> {
     //     delay_until: u64,
     //     guard: Option<EffectGuard>,
     // },
+    Navigate(String),
     Future {
         future: futures_core::future::LocalBoxFuture<'static, Option<M>>,
         guard: Option<EffectGuardHandle>,
     },
+    Subscription {
+        stream: futures_core::stream::LocalBoxStream<'static, M>,
+        guard: Option<EffectGuardHandle>,
+    },
     Multi(Vec<Self>),
+    Nested {
+        effect: Box<Effect<AnyBox>>,
+    },
 }
 
 impl<M> Default for Effect<M> {
@@ -287,22 +414,26 @@ impl<M> Effect<M> {
     pub fn map<M2, F>(self, mapper: F) -> Effect<M2>
     where
         M: 'static,
-        F: Fn(M) -> M2 + Clone + 'static,
         M2: 'static,
+        F: Fn(M) -> M2 + Clone + 'static,
     {
         match self {
-            Effect::None => Effect::None,
-            Effect::SkipRender => Effect::SkipRender,
-            Effect::Future { future, guard } => Effect::Future {
-                future: Box::pin(async move {
-                    let out = future.await;
-                    out.map(mapper)
-                }),
+            Self::None => Effect::None,
+            Self::SkipRender => Effect::SkipRender,
+            Self::Navigate(path) => Effect::Navigate(path),
+            Self::Future { future, guard } => {
+                let f2 = Box::pin(future.map(|opt| opt.map(mapper)));
+
+                Effect::Future { future: f2, guard }
+            }
+            Self::Subscription { stream, guard } => Effect::Subscription {
+                stream: Box::pin(stream.map(move |msg| mapper(msg))),
                 guard,
             },
-            Effect::Multi(items) => {
+            Self::Multi(items) => {
                 Effect::Multi(items.into_iter().map(|m| m.map(mapper.clone())).collect())
             }
+            Self::Nested { effect } => Effect::Nested { effect },
         }
     }
 
@@ -337,6 +468,30 @@ impl<M> Effect<M> {
     {
         Self::Future {
             future: Box::pin(f),
+            guard: None,
+        }
+    }
+
+    pub fn subscribe<S>(stream: S) -> (Self, EffectGuard)
+    where
+        S: futures::stream::Stream<Item = M> + 'static,
+    {
+        let (guard, handle) = EffectGuard::new();
+        (
+            Self::Subscription {
+                stream: Box::pin(stream),
+                guard: Some(handle),
+            },
+            guard,
+        )
+    }
+
+    pub fn subscribe_unguarded<S>(stream: S) -> Self
+    where
+        S: futures::stream::Stream<Item = M> + 'static,
+    {
+        Self::Subscription {
+            stream: Box::pin(stream),
             guard: None,
         }
     }

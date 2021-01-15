@@ -1,3 +1,4 @@
+/// A DOM event that can be registered as a listener.
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Event {
     Cached,

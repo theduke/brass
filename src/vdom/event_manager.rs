@@ -1,7 +1,7 @@
 use wasm_bindgen::JsCast;
 
 use super::{
-    component::{Component, ComponentHandle},
+    component::{AnyBox, AppHandle, Component, ComponentId},
     EventHandler,
 };
 
@@ -20,12 +20,46 @@ impl EventCallbackId {
     }
 }
 
+#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+pub(crate) struct DynamicEventCallbackId(u32);
+
+impl DynamicEventCallbackId {
+    pub fn new_null() -> Self {
+        Self(0)
+    }
+
+    fn is_null(&self) -> bool {
+        self.0 == 0
+    }
+}
+
+pub enum ManagedEvent<M> {
+    Root(EventHandler<M>),
+    Child {
+        id: ComponentId,
+        handler: EventHandler<AnyBox>,
+    },
+}
+
+impl<M> Clone for ManagedEvent<M> {
+    fn clone(&self) -> Self {
+        match self {
+            Self::Root(r) => Self::Root(r.clone()),
+            Self::Child { id, handler } => Self::Child {
+                id: *id,
+                handler: handler.clone(),
+            },
+        }
+    }
+}
+
 // TODO: implement a swap and replace functionality to allow reusing the same
 // handler without re-attaching by the patcher.
 pub struct EventManager<C: Component> {
     // TODO: prevent need for option and unwraps. (?)
-    component: Option<ComponentHandle<C>>,
-    handlers: Vec<EventHandler<C::Msg>>,
+    component: Option<AppHandle<C>>,
+    /// Event handlers for the root app.
+    handlers: Vec<ManagedEvent<C::Msg>>,
     closures: Vec<EventCallbackClosure>,
     idle: Vec<usize>,
 }
@@ -40,11 +74,11 @@ impl<C: Component> EventManager<C> {
         }
     }
 
-    pub(crate) fn set_component(&mut self, c: ComponentHandle<C>) {
+    pub(crate) fn set_component(&mut self, c: AppHandle<C>) {
         self.component = Some(c);
     }
 
-    pub(crate) fn get_handler(&self, id: EventCallbackId) -> Option<EventHandler<C::Msg>> {
+    pub(crate) fn get_handler(&self, id: EventCallbackId) -> Option<ManagedEvent<C::Msg>> {
         self.handlers.get(id.0 as usize - 1).cloned()
     }
 
@@ -56,7 +90,7 @@ impl<C: Component> EventManager<C> {
 
     pub(crate) fn build(
         &mut self,
-        handler: EventHandler<C::Msg>,
+        handler: ManagedEvent<C::Msg>,
     ) -> (EventCallbackId, &js_sys::Function) {
         if let Some(index) = self.idle.pop() {
             // Old handler can be reused.
