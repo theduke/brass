@@ -23,6 +23,7 @@ features = [
     "Node",
     "Window",
     "History",
+    "Location",
     "Document",
     "Event",
     "HtmlInputElement",

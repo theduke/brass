@@ -29,7 +29,7 @@ fn todo_build() {
             "--target",
             "web",
             "--no-typescript",
-            "--reference-types",
+            // "--reference-types",
             "--out-dir",
             "examples/todo/pkg",
             "./target/wasm32-unknown-unknown/debug/copper_todo.wasm",

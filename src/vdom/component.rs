@@ -1,5 +1,6 @@
 use futures::{FutureExt, StreamExt};
 use std::{cell::RefCell, collections::VecDeque, rc::Rc};
+use tracing::trace;
 use wasm_bindgen::{JsCast, JsValue};
 
 use web_sys::Node;
@@ -60,7 +61,7 @@ impl<'a, M> Context<'a, M> {
         }
     }
 
-    pub fn run<F>(&mut self, f: F) -> EffectGuard
+    pub fn run_opt<F>(&mut self, f: F) -> EffectGuard
     where
         M: 'static,
         F: std::future::Future<Output = Option<M>> + 'static,
@@ -79,7 +80,7 @@ impl<'a, M> Context<'a, M> {
         }
     }
 
-    pub fn run_unguarded<F>(&mut self, f: F)
+    pub fn run_opt_unguarded<F>(&mut self, f: F)
     where
         M: 'static,
         F: std::future::Future<Output = Option<M>> + 'static,
@@ -93,6 +94,35 @@ impl<'a, M> Context<'a, M> {
                 effect.and(eff);
             }
         }
+    }
+
+    pub fn run<F>(&mut self, f: F) -> EffectGuard
+    where
+        M: 'static,
+        F: std::future::Future<Output = M> + 'static,
+    {
+        self.run_opt(f.map(Some))
+    }
+
+    pub fn run_ungarded<F>(&mut self, f: F)
+    where
+        M: 'static,
+        F: std::future::Future<Output = M> + 'static,
+    {
+        self.run_opt_unguarded(f.map(Some));
+    }
+
+    pub fn run_map_ungarded<T, F, FM>(&mut self, f: F, mapper: FM)
+    where
+        M: 'static,
+        F: std::future::Future<Output = T> + 'static,
+        FM: Fn(T) -> M + 'static,
+    {
+        self.run_opt_unguarded(async move {
+            let out = f.await;
+            let msg = mapper(out);
+            Some(msg)
+        });
     }
 
     pub fn subscribe<S>(&mut self, stream: S) -> EffectGuard
@@ -140,6 +170,11 @@ pub trait Component: std::fmt::Debug + Sized + 'static {
     fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>);
     fn update(&mut self, msg: Self::Msg, context: Context<Self::Msg>);
     fn render(&self) -> VNode<Self::Msg>;
+
+    /// Construct a new VNode during rendering.
+    fn build<M>(props: Self::Properties) -> VNode<M> {
+        super::builder::component::<Self, M>(props)
+    }
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
@@ -369,6 +404,8 @@ pub(crate) struct AppState<C: Component> {
     component_manager: ComponentManager,
 
     child_render_queue: Vec<ComponentId>,
+
+    handle: Option<AppHandle<C>>,
 }
 
 type SkipRender = bool;
@@ -566,42 +603,49 @@ impl<C: Component> AppState<C> {
             finisher.return_component(&mut self.component_manager, state);
             node
         } else {
-            let props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
+            let (component_id, node, effect) = {
+                let props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
 
-            let mut effect = Effect::None;
-            let context = Context::new_direct(&mut effect).into_nested();
+                let mut effect = Effect::None;
+                let context = Context::new_direct(&mut effect).into_nested();
 
-            let (component, mut vnode) = vcomp.spec.constructor.call(props, context);
+                let (component, mut vnode) = vcomp.spec.constructor.call(props, context);
 
-            // TODO: rework the control flow so we don't have to reserve the
-            // component id first.
+                // TODO: rework the control flow so we don't have to reserve the
+                // component id first.
 
-            let finisher = self.component_manager.reserve_id();
+                let finisher = self.component_manager.reserve_id();
+                let component_id = finisher.id;
 
-            let mut render_context = NestedRenderContext {
-                component_id: finisher.id,
-                main: MainRenderContext { app: self },
+                let mut render_context = NestedRenderContext {
+                    component_id: finisher.id,
+                    main: MainRenderContext { app: self },
+                };
+
+                let node = patch(
+                    &mut render_context,
+                    &parent,
+                    next_sibling,
+                    VNode::Empty,
+                    &mut vnode,
+                );
+
+                let state = ComponentState2 {
+                    component,
+                    last_vnode: vnode,
+                    parent: parent.clone(),
+                    next_sibling: next_sibling.cloned(),
+                    node: node.clone(),
+                };
+                vcomp.id = component_id;
+                // FIXME: apply effect.
+                finisher.return_component(&mut self.component_manager, state);
+
+                (component_id, node, effect)
             };
 
-            let node = patch(
-                &mut render_context,
-                &parent,
-                next_sibling,
-                VNode::Empty,
-                &mut vnode,
-            );
+            self.apply_child_effect(component_id, effect);
 
-            let state = ComponentState2 {
-                component,
-                last_vnode: vnode,
-                parent: parent.clone(),
-                next_sibling: next_sibling.cloned(),
-                node: node.clone(),
-            };
-            vcomp.id = finisher.id;
-            // self.apply_child_effect(finisher.id, effect, handle);
-            // FIXME: apply effect.
-            finisher.return_component(&mut self.component_manager, state);
             node
         }
     }
@@ -614,7 +658,7 @@ impl<C: Component> AppState<C> {
         }
     }
 
-    fn apply_effect(&mut self, effect: Effect<C::Msg>, handle: &AppHandle<C>) -> SkipRender {
+    fn apply_effect(&mut self, effect: Effect<C::Msg>) -> SkipRender {
         match effect {
             Effect::None => false,
             Effect::SkipRender => true,
@@ -627,7 +671,7 @@ impl<C: Component> AppState<C> {
 
                 if let Some(mapper) = &self.routing_mapper {
                     if let Some(msg) = mapper(path) {
-                        self.update(msg, handle)
+                        self.update(msg)
                     }
                 }
 
@@ -639,7 +683,7 @@ impl<C: Component> AppState<C> {
             //     guard,
             // } => false,
             Effect::Future { future, guard } => {
-                let handle2 = handle.clone();
+                let handle2 = self.handle.clone().unwrap();
                 // TODO: cancellation guard.
                 wasm_bindgen_futures::spawn_local(async move {
                     let msg_opt = future.await;
@@ -659,7 +703,7 @@ impl<C: Component> AppState<C> {
                 false
             }
             Effect::Subscription { stream, guard } => {
-                let handle2 = handle.clone();
+                let handle2 = self.handle.clone().unwrap();
                 // TODO: cancellation guard.
                 wasm_bindgen_futures::spawn_local(async move {
                     let mut stream = stream;
@@ -678,7 +722,7 @@ impl<C: Component> AppState<C> {
             Effect::Multi(items) => {
                 let mut skip = false;
                 for item in items {
-                    if self.apply_effect(item, handle) {
+                    if self.apply_effect(item) {
                         skip = true;
                     }
                 }
@@ -695,7 +739,6 @@ impl<C: Component> AppState<C> {
         &mut self,
         component_id: ComponentId,
         effect: Effect<AnyBox>,
-        handle: &AppHandle<C>,
     ) -> SkipRender {
         match effect {
             Effect::None => false,
@@ -709,7 +752,7 @@ impl<C: Component> AppState<C> {
 
                 if let Some(mapper) = &self.routing_mapper {
                     if let Some(msg) = mapper(path) {
-                        self.update(msg, handle)
+                        self.update(msg);
                     }
                 }
 
@@ -721,7 +764,7 @@ impl<C: Component> AppState<C> {
             //     guard,
             // } => false,
             Effect::Future { future, guard } => {
-                let handle2 = handle.clone();
+                let handle2 = self.handle.clone().unwrap();
                 // TODO: cancellation guard.
                 wasm_bindgen_futures::spawn_local(async move {
                     let msg_opt = future.await;
@@ -741,7 +784,7 @@ impl<C: Component> AppState<C> {
                 false
             }
             Effect::Subscription { stream, guard } => {
-                let handle2 = handle.clone();
+                let handle2 = self.handle.clone().unwrap();
                 // TODO: cancellation guard.
                 wasm_bindgen_futures::spawn_local(async move {
                     let mut stream = stream;
@@ -760,13 +803,13 @@ impl<C: Component> AppState<C> {
             Effect::Multi(items) => {
                 let mut skip = false;
                 for item in items {
-                    if self.apply_child_effect(component_id, item, handle) {
+                    if self.apply_child_effect(component_id, item) {
                         skip = true;
                     }
                 }
                 skip
             }
-            Effect::Nested { effect } => self.apply_child_effect(component_id, *effect, handle),
+            Effect::Nested { effect } => self.apply_child_effect(component_id, *effect),
         }
     }
 
@@ -788,7 +831,7 @@ impl<C: Component> AppState<C> {
         }
     }
 
-    fn update(&mut self, msg: C::Msg, handle: &AppHandle<C>) {
+    fn update(&mut self, msg: C::Msg) {
         // let start = crate::now();
 
         let mut effect = Effect::None;
@@ -796,7 +839,7 @@ impl<C: Component> AppState<C> {
         let context = Context::new_direct(&mut effect);
         self.component.update(msg, context);
 
-        let skip_render = self.apply_effect(effect, handle);
+        let skip_render = self.apply_effect(effect);
         if !skip_render {
             self.schedule_render_if_needed(None);
         }
@@ -817,7 +860,7 @@ impl<C: Component> AppState<C> {
         let context = Context::new_direct(&mut effect).into_nested();
         state.component.update(msg, context);
 
-        let skip_render = self.apply_child_effect(component_id, effect, handle);
+        let skip_render = self.apply_child_effect(component_id, effect);
         if !skip_render {
             self.schedule_render_if_needed(Some(component_id));
         }
@@ -893,7 +936,7 @@ impl<C: Component> AppHandle<C> {
         match handler {
             super::event_manager::ManagedEvent::Root(handler) => {
                 let msg = handler.invoke(event)?;
-                s.update(msg, self);
+                s.update(msg);
             }
             super::event_manager::ManagedEvent::Child { id, handler } => {
                 let msg = handler.invoke(event)?;
@@ -912,7 +955,7 @@ impl<C: Component> AppHandle<C> {
             while let Some(task) = self.task_queue.borrow_mut().pop_front() {
                 match task {
                     Task::Root(msg) => {
-                        borrow.update(msg, self);
+                        borrow.update(msg);
                     }
                     Task::Child { component_id, msg } => {
                         borrow.update_child(component_id, msg, self);
@@ -948,12 +991,15 @@ impl<C: Component> AppHandle<C> {
             routing_mapper: route_mapper,
             event_manager: EventManager::new(),
             component_manager: ComponentManager::new(),
+            handle: None,
         }));
 
         let s = Self {
             state,
             task_queue: Rc::new(RefCell::new(VecDeque::new())),
         };
+
+        s.state.borrow_mut().handle = Some(s.clone());
 
         // Now we can replace the callbacks with real ones.
         {
@@ -967,7 +1013,7 @@ impl<C: Component> AppHandle<C> {
 
             state.render();
 
-            state.apply_effect(effect, &s);
+            state.apply_effect(effect);
         }
 
         s.render();

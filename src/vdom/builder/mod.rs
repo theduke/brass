@@ -22,12 +22,24 @@ impl<M> TagBuilder<M> {
         }
     }
 
+    pub fn wrap<P: Into<TagBuilder<M>>>(self, parent: P) -> TagBuilder<M> {
+        parent.into().and(self)
+    }
+
+    #[inline]
     pub fn class(self, cls: &str) -> Self {
         self.attr(Attr::Class, cls)
     }
 
     pub fn attr(mut self, attribute: Attr, value: impl Into<String>) -> Self {
         self.tag.attributes.insert(attribute.into(), value.into());
+        self
+    }
+
+    pub fn attr_if(mut self, flag: bool, attribute: Attr, value: impl Into<String>) -> Self {
+        if flag {
+            self.tag.attributes.insert(attribute.into(), value.into());
+        }
         self
     }
 
@@ -156,6 +168,14 @@ impl<M> DomExtend<M> for VNode<M> {
     }
 }
 
+impl<M, T: DomExtend<M>> DomExtend<M> for Option<T> {
+    fn extend(self, parent: &mut TagBuilder<M>) {
+        if let Some(inner) = self {
+            inner.extend(parent);
+        }
+    }
+}
+
 impl<M, T: DomExtend<M>> DomExtend<M> for Vec<T> {
     fn extend(self, parent: &mut TagBuilder<M>) {
         for item in self {
@@ -246,6 +266,11 @@ pub fn div_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
 }
 
 #[inline]
+pub fn img<M>(src: &str) -> TagBuilder<M> {
+    TagBuilder::new(Tag::Img).attr(Attr::Src, src)
+}
+
+#[inline]
 pub fn span<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Span)
 }
@@ -273,16 +298,6 @@ pub fn button<M>() -> TagBuilder<M> {
 #[inline]
 pub fn button_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
     TagBuilder::new(Tag::Button).and(child)
-}
-
-#[inline]
-pub fn input<M>() -> TagBuilder<M> {
-    TagBuilder::new(Tag::Input)
-}
-
-#[inline]
-pub fn textarea<M>() -> TagBuilder<M> {
-    TagBuilder::new(Tag::TextArea)
 }
 
 #[inline]
@@ -362,4 +377,36 @@ pub fn th<M>() -> TagBuilder<M> {
 #[inline]
 pub fn td<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Td)
+}
+
+#[inline]
+pub fn a<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::A)
+}
+
+#[inline]
+pub fn a_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+    TagBuilder::new(Tag::A).and(child)
+}
+
+// Form related.
+
+#[inline]
+pub fn label<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::Label)
+}
+
+#[inline]
+pub fn label_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+    TagBuilder::new(Tag::Label).and(child)
+}
+
+#[inline]
+pub fn input<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::Input)
+}
+
+#[inline]
+pub fn textarea<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::TextArea)
 }

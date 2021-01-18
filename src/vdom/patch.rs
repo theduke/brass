@@ -89,7 +89,15 @@ fn render<M, R: RenderContext<M>>(
             Some(node)
         }
         VNode::Tag(tag) => Some(render_tag(ctx, parent, next_sibling, tag).unchecked_into()),
-        VNode::Component(comp) => ctx.mount_component(comp, parent, next_sibling.clone()),
+        VNode::Component(comp) => {
+            let node = ctx.mount_component(comp, parent, next_sibling.clone());
+            if let Some(node) = node {
+                parent.insert_before(&node, next_sibling).ok();
+                Some(node)
+            } else {
+                None
+            }
+        }
     }
 }
 
@@ -159,14 +167,13 @@ fn patch_node_tag<M, R: RenderContext<M>>(ctx: &mut R, mut old: VTag<M>, new: &m
                 break;
             }
             (None, Some(child)) => {
-                // TODO: prevent casting?
-                last_sibling = render(ctx, elem, last_sibling.as_ref(), child);
+                last_sibling = render(ctx, elem, None, child);
             }
             (Some(old), None) => {
                 remove_node(ctx, old, elem);
             }
             (Some(old_tag), Some(new_tag)) => {
-                last_sibling = patch(ctx, elem, last_sibling.as_ref(), old_tag, new_tag);
+                last_sibling = patch(ctx, elem, None, old_tag, new_tag);
             }
         }
     }
@@ -253,8 +260,11 @@ pub(super) fn patch<'a, M, R: RenderContext<M>>(
             if let VNode::Component(old_comp) = old {
                 if old_comp.is_same_constructor(new_comp) {
                     new_comp.id = old_comp.id;
+                    ctx.mount_component(new_comp, parent, next_sibling)
+                } else {
+                    ctx.remove_component(old_comp.id);
+                    ctx.mount_component(new_comp, parent, next_sibling)
                 }
-                ctx.mount_component(new_comp, parent, next_sibling)
             } else {
                 remove_node(ctx, old, parent);
                 ctx.mount_component(new_comp, parent, next_sibling)

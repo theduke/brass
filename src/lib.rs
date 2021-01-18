@@ -1,12 +1,34 @@
-pub mod dom;
-pub mod vdom;
+mod util;
 
+pub mod dom;
+
+pub mod vdom;
 pub use vdom::{component::Component, VNode};
 
 use wasm_bindgen::JsCast;
 
 pub fn now() -> f64 {
     js_sys::Date::now()
+}
+
+pub fn url_path() -> String {
+    web_sys::window().unwrap().location().pathname().unwrap()
+}
+
+pub fn input_event_value(ev: web_sys::Event) -> Option<String> {
+    let v = ev
+        .current_target()?
+        .dyn_ref::<web_sys::HtmlInputElement>()?
+        .value();
+    Some(v)
+}
+
+pub fn textarea_input_value(ev: web_sys::Event) -> Option<String> {
+    let v = ev
+        .current_target()?
+        .dyn_ref::<web_sys::HtmlTextAreaElement>()?
+        .value();
+    Some(v)
 }
 
 pub fn query_selector(sel: &str) -> Option<web_sys::Node> {

@@ -1,6 +1,7 @@
 /// A DOM attribute that can be set on elements.
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
 pub enum Attr {
+    Role,
     Accept,
     AcceptCharset,
     AccessKey,
@@ -455,6 +456,7 @@ pub enum Attr {
 impl Attr {
     pub fn as_str(&self) -> &str {
         match self {
+            Self::Role => "role",
             Self::Accept => "Accept",
             Self::AcceptCharset => "AcceptCharset",
             Self::AccessKey => "AccessKey",
@@ -874,7 +876,7 @@ impl Attr {
             Self::AriaHidden => "AriaHidden",
             Self::AriaInvalid => "AriaInvalid",
             Self::AriaKeyShortcuts => "AriaKeyShortcuts",
-            Self::AriaLabel => "AriaLabel",
+            Self::AriaLabel => "aria-label",
             Self::AriaLabelledBy => "AriaLabelledBy",
             Self::AriaLive => "AriaLive",
             Self::AriaOwns => "AriaOwns",
