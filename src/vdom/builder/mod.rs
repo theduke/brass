@@ -26,11 +26,6 @@ impl<M> TagBuilder<M> {
         parent.into().and(self)
     }
 
-    #[inline]
-    pub fn class(self, cls: &str) -> Self {
-        self.attr(Attr::Class, cls)
-    }
-
     pub fn attr(mut self, attribute: Attr, value: impl Into<String>) -> Self {
         self.tag.attributes.insert(attribute.into(), value.into());
         self
@@ -39,6 +34,23 @@ impl<M> TagBuilder<M> {
     pub fn attr_if(mut self, flag: bool, attribute: Attr, value: impl Into<String>) -> Self {
         if flag {
             self.tag.attributes.insert(attribute.into(), value.into());
+        }
+        self
+    }
+
+    #[inline]
+    pub fn class(self, cls: &str) -> Self {
+        self.attr(Attr::Class, cls)
+    }
+
+    #[inline]
+    pub fn style_raw(self, style: &str) -> Self {
+        self.attr(Attr::Style, style)
+    }
+
+    pub fn attr_opt(mut self, attribute: Attr, value: Option<impl Into<String>>) -> Self {
+        if let Some(v) = value {
+            self.tag.attributes.insert(attribute.into(), v.into());
         }
         self
     }

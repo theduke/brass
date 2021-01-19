@@ -1,6 +1,5 @@
 use futures::{FutureExt, StreamExt};
-use std::{cell::RefCell, collections::VecDeque, rc::Rc};
-use tracing::trace;
+use std::{cell::RefCell, collections::VecDeque, marker::PhantomData, rc::Rc};
 use wasm_bindgen::{JsCast, JsValue};
 
 use web_sys::Node;
@@ -23,7 +22,34 @@ enum ContextState<'a, M> {
     Nested { effect: &'a mut Effect<AnyBox> },
 }
 
+/// A callback that allows sending messages to a component.
+#[derive(Clone)]
+pub struct Callback<M: 'static> {
+    // TODO: restructure this to make it saner.
+    // Probably use a Rc<dyn Fn()>
+    handle: ComponentAppHandle,
+    mapper: Option<Rc<dyn Fn(M) -> AnyBox>>,
+}
+
+impl<M: 'static> Callback<M> {
+    pub fn send(&self, value: M) {
+        if let Some(mapper) = &self.mapper {
+            self.handle.update(mapper(value))
+        } else {
+            self.handle.update(Box::new(value))
+        }
+    }
+
+    pub fn map<T: 'static, F: Fn(T) -> M + 'static>(self, mapper: F) -> Callback<T> {
+        Callback {
+            handle: self.handle.clone(),
+            mapper: Some(Rc::new(move |value| Box::new(mapper(value)))),
+        }
+    }
+}
+
 pub struct Context<'a, M> {
+    handle: ComponentAppHandle,
     state: ContextState<'a, M>,
 }
 
@@ -31,9 +57,11 @@ impl<'a> Context<'a, AnyBox> {
     fn into_nested<M2>(self) -> Context<'a, M2> {
         match self.state {
             ContextState::Direct { effect } => Context {
+                handle: self.handle,
                 state: ContextState::Nested { effect },
             },
             ContextState::Nested { effect } => Context {
+                handle: self.handle,
                 state: ContextState::Nested { effect },
             },
         }
@@ -41,8 +69,9 @@ impl<'a> Context<'a, AnyBox> {
 }
 
 impl<'a, M> Context<'a, M> {
-    fn new_direct(effect: &'a mut Effect<M>) -> Self {
+    fn new_direct(effect: &'a mut Effect<M>, handle: ComponentAppHandle) -> Self {
         Self {
+            handle,
             state: ContextState::Direct { effect },
         }
     }
@@ -160,11 +189,30 @@ impl<'a, M> Context<'a, M> {
             }
         }
     }
+
+    pub fn callback(&mut self) -> Callback<M>
+    where
+        M: 'static,
+    {
+        Callback {
+            handle: self.handle.clone(),
+            mapper: None,
+        }
+    }
+
+    pub fn callback_map<T, F>(&mut self, mapper: F) -> Callback<T>
+    where
+        M: 'static,
+        T: 'static,
+        F: Fn(T) -> M + 'static,
+    {
+        self.callback().map(mapper)
+    }
 }
 
-pub trait Component: std::fmt::Debug + Sized + 'static {
+pub trait Component: Sized + 'static {
     type Properties;
-    type Msg: std::fmt::Debug + 'static;
+    type Msg: 'static;
 
     fn init(props: Self::Properties, context: Context<Self::Msg>) -> Self;
     fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>);
@@ -183,6 +231,10 @@ pub struct ComponentId(u32);
 impl ComponentId {
     pub(crate) fn new_none() -> Self {
         Self(0)
+    }
+
+    pub(crate) fn is_none(&self) -> bool {
+        self.0 == 0
     }
 }
 
@@ -238,6 +290,29 @@ impl<C: Component> DynamicComponent for C {
     fn render(&self) -> VNode<AnyBox> {
         // TODO: can we map with less overhead?
         self.render().map(into_any_box)
+    }
+}
+
+struct AnyComponent(Box<dyn DynamicComponent>);
+
+impl Component for AnyComponent {
+    type Properties = AnyBox;
+    type Msg = AnyBox;
+
+    fn init(props: Self::Properties, context: Context<Self::Msg>) -> Self {
+        todo!()
+    }
+
+    fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>) {
+        todo!()
+    }
+
+    fn update(&mut self, msg: Self::Msg, context: Context<Self::Msg>) {
+        todo!()
+    }
+
+    fn render(&self) -> VNode<Self::Msg> {
+        todo!()
     }
 }
 
@@ -549,6 +624,21 @@ impl<C: Component> AppState<C> {
         None
     }
 
+    fn make_component_handle(&self, component_id: ComponentId) -> ComponentAppHandle {
+        let handle = self.handle.clone().unwrap();
+        let id = component_id.clone();
+        ComponentAppHandle {
+            component_id,
+            update: Rc::new(move |msg| {
+                tracing::trace!("ComponentAppHandle::update()A;");
+                handle.update(Task::Child {
+                    component_id: id,
+                    msg,
+                })
+            }),
+        }
+    }
+
     fn mount_component<'a, 'b, 'c>(
         &'a mut self,
         vcomp: &'b mut VComponent,
@@ -603,19 +693,22 @@ impl<C: Component> AppState<C> {
             finisher.return_component(&mut self.component_manager, state);
             node
         } else {
+            tracing::trace!("making new component");
             let (component_id, node, effect) = {
                 let props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
 
+                let finisher = self.component_manager.reserve_id();
+                let component_id = finisher.id;
+
                 let mut effect = Effect::None;
-                let context = Context::new_direct(&mut effect).into_nested();
+
+                let handle = self.make_component_handle(component_id);
+                let context = Context::new_direct(&mut effect, handle).into_nested();
 
                 let (component, mut vnode) = vcomp.spec.constructor.call(props, context);
 
                 // TODO: rework the control flow so we don't have to reserve the
                 // component id first.
-
-                let finisher = self.component_manager.reserve_id();
-                let component_id = finisher.id;
 
                 let mut render_context = NestedRenderContext {
                     component_id: finisher.id,
@@ -836,7 +929,8 @@ impl<C: Component> AppState<C> {
 
         let mut effect = Effect::None;
 
-        let context = Context::new_direct(&mut effect);
+        let handle = self.make_component_handle(ComponentId::new_none());
+        let context = Context::new_direct(&mut effect, handle);
         self.component.update(msg, context);
 
         let skip_render = self.apply_effect(effect);
@@ -851,13 +945,15 @@ impl<C: Component> AppState<C> {
     fn update_child(&mut self, component_id: ComponentId, msg: AnyBox, handle: &AppHandle<C>) {
         // let start = crate::now();
 
+        let chandle = self.make_component_handle(component_id);
+
         let state = self
             .component_manager
             .get_mut(component_id)
-            .expect("Component disappeared");
+            .expect(&format!("Component disappeared: {:?}", component_id));
 
         let mut effect = Effect::None;
-        let context = Context::new_direct(&mut effect).into_nested();
+        let context = Context::new_direct(&mut effect, chandle).into_nested();
         state.component.update(msg, context);
 
         let skip_render = self.apply_child_effect(component_id, effect);
@@ -930,6 +1026,22 @@ impl<C: Component> AppHandle<C> {
         self.state.borrow_mut().render();
     }
 
+    fn process_events(&self, state: &mut AppState<C>) {
+        // TODO: get all at once!
+        while let Some(task) = self.task_queue.borrow_mut().pop_front() {
+            match task {
+                Task::Root(msg) => {
+                    tracing::trace!("handling root task");
+                    state.update(msg);
+                }
+                Task::Child { component_id, msg } => {
+                    tracing::trace!(?component_id, "handling child task");
+                    state.update_child(component_id, msg, self);
+                }
+            }
+        }
+    }
+
     pub fn handle_event(&self, id: EventCallbackId, event: web_sys::Event) -> Option<()> {
         let mut s = self.state.borrow_mut();
         let handler = s.event_manager.get_handler(id)?;
@@ -944,24 +1056,15 @@ impl<C: Component> AppHandle<C> {
             }
         }
 
+        self.process_events(&mut s);
+
         None
     }
 
     fn update(&self, task: Task<C::Msg>) {
         self.task_queue.borrow_mut().push_back(task);
-
-        if let Ok(mut borrow) = self.state.try_borrow_mut() {
-            // TODO: get all at once!
-            while let Some(task) = self.task_queue.borrow_mut().pop_front() {
-                match task {
-                    Task::Root(msg) => {
-                        borrow.update(msg);
-                    }
-                    Task::Child { component_id, msg } => {
-                        borrow.update_child(component_id, msg, self);
-                    }
-                }
-            }
+        if let Ok(mut state) = self.state.try_borrow_mut() {
+            self.process_events(&mut state);
         }
     }
 
@@ -974,7 +1077,15 @@ impl<C: Component> AppHandle<C> {
         let document = window.document().expect("Could not get document");
 
         let mut effect = Effect::None;
-        let context = Context::new_direct(&mut effect);
+
+        // FIXME: use proper handle  instead of fake one.
+        let handle = ComponentAppHandle {
+            component_id: ComponentId::new_none(),
+            update: Rc::new(|m| {
+                todo!("tried to use fake component handle");
+            }),
+        };
+        let context = Context::new_direct(&mut effect, handle);
         let component = C::init(props, context);
 
         let state = Rc::new(RefCell::new(AppState {
@@ -1020,6 +1131,19 @@ impl<C: Component> AppHandle<C> {
 
         // TODO: figure out proper shutdown without leaking.
         std::mem::forget(s);
+    }
+}
+
+#[derive(Clone)]
+struct ComponentAppHandle {
+    // TODO: move id behind Rc.
+    component_id: ComponentId,
+    update: Rc<dyn Fn(AnyBox)>,
+}
+
+impl ComponentAppHandle {
+    fn update(&self, msg: AnyBox) {
+        (&self.update)(msg)
     }
 }
 
