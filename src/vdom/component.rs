@@ -23,12 +23,20 @@ enum ContextState<'a, M> {
 }
 
 /// A callback that allows sending messages to a component.
-#[derive(Clone)]
 pub struct Callback<M: 'static> {
     // TODO: restructure this to make it saner.
     // Probably use a Rc<dyn Fn()>
     handle: ComponentAppHandle,
     mapper: Option<Rc<dyn Fn(M) -> AnyBox>>,
+}
+
+impl<M: 'static> Clone for Callback<M> {
+    fn clone(&self) -> Self {
+        Self {
+            handle: self.handle.clone(),
+            mapper: self.mapper.clone(),
+        }
+    }
 }
 
 impl<M: 'static> Callback<M> {
@@ -141,17 +149,22 @@ impl<'a, M> Context<'a, M> {
         self.run_opt_unguarded(f.map(Some));
     }
 
+    pub fn run_map<T, F, FM>(&mut self, f: F, mapper: FM) -> EffectGuard
+    where
+        M: 'static,
+        F: std::future::Future<Output = T> + 'static,
+        FM: Fn(T) -> M + 'static,
+    {
+        self.run(async move { mapper(f.await) })
+    }
+
     pub fn run_map_ungarded<T, F, FM>(&mut self, f: F, mapper: FM)
     where
         M: 'static,
         F: std::future::Future<Output = T> + 'static,
         FM: Fn(T) -> M + 'static,
     {
-        self.run_opt_unguarded(async move {
-            let out = f.await;
-            let msg = mapper(out);
-            Some(msg)
-        });
+        self.run_opt_unguarded(async move { Some(mapper(f.await)) });
     }
 
     pub fn subscribe<S>(&mut self, stream: S) -> EffectGuard
@@ -207,6 +220,16 @@ impl<'a, M> Context<'a, M> {
         F: Fn(T) -> M + 'static,
     {
         self.callback().map(mapper)
+    }
+
+    pub fn timeout(&mut self, msg: M, delay: std::time::Duration) -> EffectGuard
+    where
+        M: 'static,
+    {
+        self.run(async move {
+            crate::util::timeout(delay).await;
+            msg
+        })
     }
 }
 
@@ -274,9 +297,7 @@ impl<C: Component> DynamicComponent for C {
         self.on_property_change(real_props, real_context);
 
         // FIXME: determine if we should render.
-        // let node = c.render();
-        // node.map(into_any_box)
-        None
+        Some(DynamicComponent::render(self))
     }
 
     fn update(&mut self, msg: AnyBox, ctx: Context<AnyBox>) {
@@ -293,28 +314,28 @@ impl<C: Component> DynamicComponent for C {
     }
 }
 
-struct AnyComponent(Box<dyn DynamicComponent>);
+// struct AnyComponent(Box<dyn DynamicComponent>);
 
-impl Component for AnyComponent {
-    type Properties = AnyBox;
-    type Msg = AnyBox;
+// impl Component for AnyComponent {
+//     type Properties = AnyBox;
+//     type Msg = AnyBox;
 
-    fn init(props: Self::Properties, context: Context<Self::Msg>) -> Self {
-        todo!()
-    }
+//     fn init(props: Self::Properties, context: Context<Self::Msg>) -> Self {
+//         todo!()
+//     }
 
-    fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>) {
-        todo!()
-    }
+//     fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>) {
+//         todo!()
+//     }
 
-    fn update(&mut self, msg: Self::Msg, context: Context<Self::Msg>) {
-        todo!()
-    }
+//     fn update(&mut self, msg: Self::Msg, context: Context<Self::Msg>) {
+//         todo!()
+//     }
 
-    fn render(&self) -> VNode<Self::Msg> {
-        todo!()
-    }
-}
+//     fn render(&self) -> VNode<Self::Msg> {
+//         todo!()
+//     }
+// }
 
 struct ComponentState2<T> {
     /// The boxed component.
@@ -630,7 +651,6 @@ impl<C: Component> AppState<C> {
         ComponentAppHandle {
             component_id,
             update: Rc::new(move |msg| {
-                tracing::trace!("ComponentAppHandle::update()A;");
                 handle.update(Task::Child {
                     component_id: id,
                     msg,
@@ -660,12 +680,14 @@ impl<C: Component> AppState<C> {
 
             // FIXME: apply effect.
 
-            // let new_props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
-            // let mut effect = Effect::None;
-            // let context = Context::new_direct(&mut effect).into_nested();
+            let new_props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
+            let mut effect = Effect::None;
+            let context = Context::new_direct(&mut effect, self.make_component_handle(vcomp.id))
+                .into_nested();
             // FIXME: figure out how to handle updated props.
-            // let vnode_opt = state.component.on_property_change(new_props, context);
-            let vnode_opt = Some(state.component.render());
+            let vnode_opt = state.component.on_property_change(new_props, context);
+
+            // let vnode_opt = Some(state.component.render());
 
             let node = if let Some(mut new_vnode) = vnode_opt {
                 let mut render_context = NestedRenderContext {
@@ -693,7 +715,6 @@ impl<C: Component> AppState<C> {
             finisher.return_component(&mut self.component_manager, state);
             node
         } else {
-            tracing::trace!("making new component");
             let (component_id, node, effect) = {
                 let props = vcomp.spec.props.take().unwrap_or_else(|| Box::new(()));
 
@@ -1005,6 +1026,10 @@ enum Task<M> {
         component_id: ComponentId,
         msg: AnyBox,
     },
+    Event {
+        callback_id: EventCallbackId,
+        event: web_sys::Event,
+    },
 }
 
 pub(crate) struct AppHandle<C: Component> {
@@ -1026,45 +1051,53 @@ impl<C: Component> AppHandle<C> {
         self.state.borrow_mut().render();
     }
 
-    fn process_events(&self, state: &mut AppState<C>) {
+    fn process_tasks(&self, state: &mut AppState<C>) {
         // TODO: get all at once!
-        while let Some(task) = self.task_queue.borrow_mut().pop_front() {
+        loop {
+            let task = {
+                if let Some(task) = self.task_queue.borrow_mut().pop_front() {
+                    task
+                } else {
+                    break;
+                }
+            };
             match task {
                 Task::Root(msg) => {
-                    tracing::trace!("handling root task");
                     state.update(msg);
                 }
                 Task::Child { component_id, msg } => {
-                    tracing::trace!(?component_id, "handling child task");
                     state.update_child(component_id, msg, self);
+                }
+                Task::Event { callback_id, event } => {
+                    if let Some(handler) = state.event_manager.get_handler(callback_id) {
+                        match handler {
+                            super::event_manager::ManagedEvent::Root(handler) => {
+                                if let Some(msg) = handler.invoke(event) {
+                                    state.update(msg);
+                                }
+                            }
+                            super::event_manager::ManagedEvent::Child { id, handler } => {
+                                if let Some(msg) = handler.invoke(event) {
+                                    state.update_child(id, msg, self);
+                                }
+                            }
+                        }
+                    }
                 }
             }
         }
     }
 
-    pub fn handle_event(&self, id: EventCallbackId, event: web_sys::Event) -> Option<()> {
-        let mut s = self.state.borrow_mut();
-        let handler = s.event_manager.get_handler(id)?;
-        match handler {
-            super::event_manager::ManagedEvent::Root(handler) => {
-                let msg = handler.invoke(event)?;
-                s.update(msg);
-            }
-            super::event_manager::ManagedEvent::Child { id, handler } => {
-                let msg = handler.invoke(event)?;
-                s.update_child(id, msg, self);
-            }
-        }
-
-        self.process_events(&mut s);
-
-        None
+    pub fn handle_event(&self, callback_id: EventCallbackId, event: web_sys::Event) {
+        self.update(Task::Event { callback_id, event });
     }
 
     fn update(&self, task: Task<C::Msg>) {
-        self.task_queue.borrow_mut().push_back(task);
+        {
+            self.task_queue.borrow_mut().push_back(task)
+        }
         if let Ok(mut state) = self.state.try_borrow_mut() {
-            self.process_events(&mut state);
+            self.process_tasks(&mut state);
         }
     }
 

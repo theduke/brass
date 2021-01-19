@@ -44,6 +44,15 @@ impl<M> TagBuilder<M> {
     }
 
     #[inline]
+    pub fn class_if(self, flag: bool, cls: &str) -> Self {
+        if flag {
+            self.attr(Attr::Class, cls)
+        } else {
+            self
+        }
+    }
+
+    #[inline]
     pub fn style_raw(self, style: &str) -> Self {
         self.attr(Attr::Style, style)
     }
