@@ -1,7 +1,8 @@
 use copper::{
-    dom::Attr,
+    dom::{Attr, Event},
     vdom::{self, div, DomExtend, TagBuilder},
 };
+use vdom::button;
 
 pub fn box_<M>() -> TagBuilder<M> {
     div().class("box")
@@ -70,4 +71,20 @@ pub fn field_help<M>() -> TagBuilder<M> {
 
 pub fn field_help_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
     vdom::p().class("help").and(content)
+}
+
+pub fn modal<M: Clone + 'static, C: DomExtend<M>>(content: C, on_close: M) -> TagBuilder<M> {
+    let on_close2 = on_close.clone();
+    let bg = div()
+        .class("modal-background")
+        .on_captured(Event::Click, move |_| Some(on_close.clone()));
+
+    let inner = div().class("modal-content").and(content);
+
+    let close = button()
+        .class("modal-close is-large")
+        .attr(Attr::AriaLabel, "close")
+        .on_captured(Event::Click, move |_| Some(on_close2.clone()));
+
+    div().class("modal is-active").and(bg).and(inner).and(close)
 }
