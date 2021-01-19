@@ -1,8 +1,8 @@
 use copper::{
-    dom::{Attr, Event},
+    dom::{Attr, Event, Tag},
     vdom::{self, div, DomExtend, TagBuilder},
 };
-use vdom::button;
+use vdom::{span, tag};
 
 pub fn box_<M>() -> TagBuilder<M> {
     div().class("box")
@@ -87,4 +87,20 @@ pub fn modal<M: Clone + 'static, C: DomExtend<M>>(content: C, on_close: M) -> Ta
         .on_captured(Event::Click, move |_| Some(on_close2.clone()));
 
     div().class("modal is-active").and(bg).and(inner).and(close)
+}
+
+pub fn button<M>() -> TagBuilder<M> {
+    vdom::button().class("button")
+}
+
+pub fn button_medium<M>() -> TagBuilder<M> {
+    vdom::button().class("button is-medium")
+}
+
+pub fn button_large<M>() -> TagBuilder<M> {
+    vdom::button().class("button is-large")
+}
+
+pub fn icon_fa<M>(icon: &str) -> TagBuilder<M> {
+    span().class("icon").and(tag(Tag::I).class(icon))
 }
