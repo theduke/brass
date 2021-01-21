@@ -1,19 +1,16 @@
-pub mod component;
-mod event_manager;
-mod patch;
+pub mod render;
 
 mod builder;
 pub use builder::*;
 
-use component::{AnyBox, ComponentId};
-use futures::{future::FutureExt, stream::StreamExt};
 use wasm_bindgen::JsValue;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{collections::HashMap, marker::PhantomData, rc::Rc};
 
-use crate::{dom, Component};
-
-use self::component::ComponentSpec;
+use crate::{
+    app::{ComponentConstructor, ComponentId, EventCallbackId},
+    dom, AnyBox, Component,
+};
 
 /// Wrapper around a [`web_sys::Node`].
 /// A fake JsValue (JsValue::UNDEFINED) is used for the empty state.
@@ -122,44 +119,18 @@ impl From<String> for VText {
     }
 }
 
-pub type StaticEventHandler<M> = fn(web_sys::Event) -> Option<M>;
+pub type StaticEventHandler = fn(web_sys::Event) -> Option<AnyBox>;
 // TODO: use box instead?
-pub type ClosureEventHandler<M> = Rc<dyn Fn(web_sys::Event) -> Option<M>>;
+pub type ClosureEventHandler = Rc<dyn Fn(web_sys::Event) -> Option<AnyBox>>;
 
-pub enum EventHandler<M> {
-    Fn(StaticEventHandler<M>),
-    Closure(ClosureEventHandler<M>),
+#[derive(Clone)]
+pub enum EventHandler {
+    Fn(StaticEventHandler),
+    Closure(ClosureEventHandler),
 }
 
-impl<M> EventHandler<M> {
-    pub fn map<M2, F>(self, mapper: F) -> EventHandler<M2>
-    where
-        M: 'static,
-        M2: 'static,
-        F: Fn(M) -> M2 + Clone + 'static,
-    {
-        match self {
-            EventHandler::Fn(f) => {
-                EventHandler::Closure(Rc::new(move |event| f(event).map(mapper.clone())))
-            }
-            EventHandler::Closure(f) => {
-                EventHandler::Closure(Rc::new(move |event| f(event).map(mapper.clone())))
-            }
-        }
-    }
-}
-
-impl<M> Clone for EventHandler<M> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Fn(f) => Self::Fn(*f),
-            Self::Closure(f) => Self::Closure(f.clone()),
-        }
-    }
-}
-
-impl<M> EventHandler<M> {
-    pub fn invoke(&self, event: web_sys::Event) -> Option<M> {
+impl EventHandler {
+    pub fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
         match self {
             EventHandler::Fn(f) => f(event),
             EventHandler::Closure(f) => (f)(event),
@@ -167,7 +138,7 @@ impl<M> EventHandler<M> {
     }
 }
 
-impl<M> PartialEq for EventHandler<M> {
+impl PartialEq for EventHandler {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
             (EventHandler::Fn(f1), EventHandler::Fn(f2)) => f1 == f2,
@@ -176,34 +147,13 @@ impl<M> PartialEq for EventHandler<M> {
     }
 }
 
-impl<M> From<StaticEventHandler<M>> for EventHandler<M> {
-    fn from(f: StaticEventHandler<M>) -> Self {
-        Self::Fn(f)
-    }
-}
-
-struct Listener<M> {
+struct Listener {
     event: dom::Event,
-    handler: EventHandler<M>,
-    callback_id: event_manager::EventCallbackId,
+    handler: EventHandler,
+    callback_id: EventCallbackId,
 }
 
-impl<M> Listener<M> {
-    fn map<M2, F>(self, mapper: F) -> Listener<M2>
-    where
-        M: 'static,
-        M2: 'static,
-        F: Fn(M) -> M2 + Clone + 'static,
-    {
-        Listener {
-            event: self.event,
-            handler: self.handler.map(mapper),
-            callback_id: self.callback_id,
-        }
-    }
-}
-
-impl<M> PartialEq for Listener<M> {
+impl PartialEq for Listener {
     fn eq(&self, other: &Self) -> bool {
         self.event == other.event && self.handler == other.handler
     }
@@ -218,9 +168,10 @@ pub struct VTag<M> {
     // TODO: should this be a u32 or a Rc<String> ?
     // TODO: implement keying support for the rendering
     key: Option<String>,
-    listeners: Vec<Listener<M>>,
+    listeners: Vec<Listener>,
 
     element: OptionalElement,
+    _marker: PhantomData<M>,
 }
 
 impl<M> VTag<M> {
@@ -232,6 +183,7 @@ impl<M> VTag<M> {
             key: None,
             listeners: Vec::new(),
             element: OptionalElement::new_none(),
+            _marker: PhantomData,
         }
     }
 }
@@ -248,22 +200,50 @@ impl<M> std::fmt::Debug for VTag<M> {
     }
 }
 
+pub(crate) struct ComponentSpec {
+    pub type_id: std::any::TypeId,
+    pub constructor: ComponentConstructor,
+    // TODO: use Option<>  for components without properties to avoid allocations.
+    // Properties for the component.
+    // Will be used during rendering, so will always be None for previous render
+    // vnodes.
+    pub props: Option<AnyBox>,
+}
+
+impl ComponentSpec {
+    pub fn new<C: Component>(props: C::Properties) -> Self {
+        Self {
+            type_id: std::any::TypeId::of::<C>(),
+            constructor: ComponentConstructor::new::<C>(),
+            props: Some(Box::new(props)),
+        }
+    }
+}
+
+impl std::fmt::Debug for ComponentSpec {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("ComponentSpec")
+            .field("props", &self.props)
+            .finish()
+    }
+}
+
 #[derive(Debug)]
 pub struct VComponent {
-    spec: ComponentSpec,
-    id: ComponentId,
+    pub(crate) spec: ComponentSpec,
+    pub(crate) id: ComponentId,
 }
 
 impl VComponent {
     pub fn new<C: Component>(props: C::Properties) -> Self {
         Self {
             spec: ComponentSpec::new::<C>(props),
-            id: ComponentId::new_none(),
+            id: ComponentId::NONE,
         }
     }
 
     pub fn is_same_constructor(&self, other: &Self) -> bool {
-        self.spec.is_same_constructor(&other.spec)
+        self.spec.type_id == other.spec.type_id
     }
 }
 
@@ -272,6 +252,12 @@ pub enum VNode<M> {
     Text(VText),
     Tag(VTag<M>),
     Component(VComponent),
+}
+
+impl<M> Default for VNode<M> {
+    fn default() -> Self {
+        Self::Empty
+    }
 }
 
 impl<M> std::fmt::Debug for VNode<M> {
@@ -294,205 +280,19 @@ impl<M> std::fmt::Debug for VNode<M> {
 }
 
 impl<M> VNode<M> {
-    pub fn map<M2, F>(self, mapper: F) -> VNode<M2>
-    where
-        M: 'static,
-        M2: 'static,
-        F: Fn(M) -> M2 + Clone + 'static,
-    {
-        match self {
-            VNode::Empty => VNode::Empty,
-            VNode::Text(txt) => VNode::Text(txt),
-            VNode::Tag(tag) => VNode::Tag(VTag {
-                tag: tag.tag,
-                attributes: tag.attributes,
-                children: tag
-                    .children
-                    .into_iter()
-                    .map(|c| c.map(mapper.clone()))
-                    .collect(),
-                key: tag.key,
-                listeners: tag
-                    .listeners
-                    .into_iter()
-                    .map(|l| l.map(mapper.clone()))
-                    .collect(),
-                element: tag.element,
-            }),
-            VNode::Component(c) => VNode::Component(c),
-        }
+    pub fn into_any(self) -> VNode<AnyBox> {
+        // This is safe because the M generic paramenter is only ever used
+        // as a PhantomData marker, so it doesn't have any effects on data
+        // structure layout.
+        unsafe { std::mem::transmute(self) }
     }
 }
 
-#[must_use]
-pub struct EffectGuard {
-    is_cancelled: Rc<RefCell<bool>>,
-}
-
-impl std::fmt::Debug for EffectGuard {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("EffectGuard").finish()
-    }
-}
-
-pub struct EffectGuardHandle {
-    is_cancelled: Rc<RefCell<bool>>,
-}
-
-impl EffectGuardHandle {
-    pub fn is_cancelled(&self) -> bool {
-        *self.is_cancelled.borrow()
-    }
-}
-
-impl EffectGuard {
-    fn new() -> (Self, EffectGuardHandle) {
-        let flag = Rc::new(RefCell::new(false));
-        (
-            Self {
-                is_cancelled: flag.clone(),
-            },
-            EffectGuardHandle {
-                is_cancelled: flag.clone(),
-            },
-        )
-    }
-
-    pub fn is_cancelled(&self) -> bool {
-        *self.is_cancelled.borrow()
-    }
-}
-
-impl Drop for EffectGuard {
-    fn drop(&mut self) {
-        *self.is_cancelled.borrow_mut() = true;
-    }
-}
-
-pub(crate) enum Effect<M> {
-    None,
-    SkipRender,
-    // Delay {
-    //     msg: M,
-    //     delay_until: u64,
-    //     guard: Option<EffectGuard>,
-    // },
-    Navigate(String),
-    Future {
-        future: futures_core::future::LocalBoxFuture<'static, Option<M>>,
-        guard: Option<EffectGuardHandle>,
-    },
-    Subscription {
-        stream: futures_core::stream::LocalBoxStream<'static, M>,
-        guard: Option<EffectGuardHandle>,
-    },
-    Multi(Vec<Self>),
-    Nested {
-        effect: Box<Effect<AnyBox>>,
-    },
-}
-
-impl<M> Default for Effect<M> {
-    fn default() -> Self {
-        Self::None
-    }
-}
-
-impl<M> Effect<M> {
-    pub fn and(&mut self, eff: Self) {
-        if let Effect::None = self {
-            *self = eff
-        } else if let Self::Multi(items) = self {
-            items.push(eff)
-        } else {
-            let mut old = Effect::None;
-            std::mem::swap(&mut old, self);
-            *self = Self::Multi(vec![old, eff])
-        }
-    }
-
-    pub fn map<M2, F>(self, mapper: F) -> Effect<M2>
-    where
-        M: 'static,
-        M2: 'static,
-        F: Fn(M) -> M2 + Clone + 'static,
-    {
-        match self {
-            Self::None => Effect::None,
-            Self::SkipRender => Effect::SkipRender,
-            Self::Navigate(path) => Effect::Navigate(path),
-            Self::Future { future, guard } => {
-                let f2 = Box::pin(future.map(|opt| opt.map(mapper)));
-
-                Effect::Future { future: f2, guard }
-            }
-            Self::Subscription { stream, guard } => Effect::Subscription {
-                stream: Box::pin(stream.map(move |msg| mapper(msg))),
-                guard,
-            },
-            Self::Multi(items) => {
-                Effect::Multi(items.into_iter().map(|m| m.map(mapper.clone())).collect())
-            }
-            Self::Nested { effect } => Effect::Nested { effect },
-        }
-    }
-
-    pub fn none() -> Self {
-        Self::None
-    }
-
-    // pub fn delay_for(duration: std::time::Duration, msg: M) -> Self {
-    //     Self::Delay{
-    //         msg,
-    //         delay_until: crate::now() as u64 + duration.as_secs(),
-    //     }
-    // }
-
-    pub fn future<F>(f: F) -> (Self, EffectGuard)
-    where
-        F: std::future::Future<Output = Option<M>> + 'static,
-    {
-        let (guard, handle) = EffectGuard::new();
-        (
-            Self::Future {
-                future: Box::pin(f),
-                guard: Some(handle),
-            },
-            guard,
-        )
-    }
-
-    pub fn future_unguarded<F>(f: F) -> Self
-    where
-        F: std::future::Future<Output = Option<M>> + 'static,
-    {
-        Self::Future {
-            future: Box::pin(f),
-            guard: None,
-        }
-    }
-
-    pub fn subscribe<S>(stream: S) -> (Self, EffectGuard)
-    where
-        S: futures::stream::Stream<Item = M> + 'static,
-    {
-        let (guard, handle) = EffectGuard::new();
-        (
-            Self::Subscription {
-                stream: Box::pin(stream),
-                guard: Some(handle),
-            },
-            guard,
-        )
-    }
-
-    pub fn subscribe_unguarded<S>(stream: S) -> Self
-    where
-        S: futures::stream::Stream<Item = M> + 'static,
-    {
-        Self::Subscription {
-            stream: Box::pin(stream),
-            guard: None,
-        }
+impl VNode<AnyBox> {
+    pub fn into_typed<M>(self) -> VNode<M> {
+        // This is safe because the M generic paramenter is only ever used
+        // as a PhantomData marker, so it doesn't have any effects on data
+        // structure layout.
+        unsafe { std::mem::transmute(self) }
     }
 }

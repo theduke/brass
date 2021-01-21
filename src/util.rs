@@ -1,6 +1,5 @@
-use std::{cell::RefCell, collections::VecDeque, future::Ready, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
-use futures::future::Pending;
 use wasm_bindgen::{closure::Closure, JsCast};
 
 use crate::now;
@@ -15,35 +14,34 @@ pub fn document() -> web_sys::Document {
     window().document().expect("Could not get document")
 }
 
-/// A "HashMap" that internally uses a Vec for storage.
-/// This is a good storage data structure for attribute lists, since it has
-/// stable ordering and most dom elements have very few attributes.
+// /// A "HashMap" that internally uses a Vec for storage.
+// /// This is a good storage data structure for attribute lists, since it has
+// /// stable ordering and most dom elements have very few attributes.
+// #[derive(Clone, Debug)]
+// pub(crate) struct VecMap<T> {
+//     items: Vec<T>,
+// }
 
-#[derive(Clone, Debug)]
-pub(crate) struct VecMap<T> {
-    items: Vec<T>,
-}
+// impl<T> Default for VecMap<T> {
+//     fn default() -> Self {
+//         Self { items: Vec::new() }
+//     }
+// }
 
-impl<T> Default for VecMap<T> {
-    fn default() -> Self {
-        Self { items: Vec::new() }
-    }
-}
+// impl<T> VecMap<T>
+// where
+//     T: Eq + PartialEq,
+// {
+//     pub fn new() -> Self {
+//         Self { items: Vec::new() }
+//     }
 
-impl<T> VecMap<T>
-where
-    T: Eq + PartialEq,
-{
-    pub fn new() -> Self {
-        Self { items: Vec::new() }
-    }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            items: Vec::with_capacity(capacity),
-        }
-    }
-}
+//     pub fn with_capacity(capacity: usize) -> Self {
+//         Self {
+//             items: Vec::with_capacity(capacity),
+//         }
+//     }
+// }
 
 /// A timeout future.
 pub(crate) struct Timeout {

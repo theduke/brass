@@ -3,10 +3,8 @@ use wasm_bindgen::JsCast;
 
 use copper::{
     dom::{Attr, Event},
-    vdom::{
-        button, component, component::Context, div, div_with, h4, input, li, span_with, text, ul,
-    },
-    Component,
+    vdom::{button, component, div, div_with, h2, h4, input, li, span_with, text, ul},
+    Component, Context, ShouldRender,
 };
 
 type TodoId = usize;
@@ -22,7 +20,7 @@ impl Component for Counter {
 
     type Msg = u32;
 
-    fn init(props: Self::Properties, _context: Context<Self::Msg>) -> Self {
+    fn init(props: Self::Properties, _context: &mut Context<Self::Msg>) -> Self {
         Self {
             count: 0,
             nest: props,
@@ -32,12 +30,12 @@ impl Component for Counter {
     fn on_property_change(
         &mut self,
         _new_props: Self::Properties,
-        mut context: Context<Self::Msg>,
-    ) {
-        context.skip_render();
+        _context: &mut Context<Self::Msg>,
+    ) -> ShouldRender {
+        true
     }
 
-    fn update(&mut self, msg: Self::Msg, _context: Context<Self::Msg>) {
+    fn update(&mut self, msg: Self::Msg, _context: &mut Context<Self::Msg>) {
         self.count += msg;
     }
 
@@ -78,18 +76,22 @@ impl copper::Component for App {
     type Properties = ();
     type Msg = Msg;
 
-    fn init(_props: Self::Properties, _ctx: Context<Self::Msg>) -> Self {
+    fn init(_props: Self::Properties, _ctx: &mut Context<Self::Msg>) -> Self {
         Self {
             new_todo: String::new(),
             todos: Vec::new(),
         }
     }
 
-    fn on_property_change(&mut self, new_props: Self::Properties, mut context: Context<Self::Msg>) {
-        context.skip_render()
+    fn on_property_change(
+        &mut self,
+        _new_props: Self::Properties,
+        _context: &mut Context<Self::Msg>,
+    ) -> ShouldRender {
+        false
     }
 
-    fn update(&mut self, msg: Self::Msg, _ctx: Context<Self::Msg>) {
+    fn update(&mut self, msg: Self::Msg, _ctx: &mut Context<Self::Msg>) {
         match msg {
             Msg::Change(value) => {
                 self.new_todo = value;
@@ -163,11 +165,11 @@ impl copper::Component for App {
         }
 
         div()
-            .and(component::<Counter, _>(true))
-            .and_iter((0..400).map(|_| component::<Counter, _>(true)))
-            // .and(h2().and(text("Copper - Todo")))
-            // .and(editor)
-            // .and(todos)
+            // .and(component::<Counter, _>(true))
+            // .and_iter((0..400).map(|_| component::<Counter, _>(true)))
+            .and(h2().and(text("Copper - Todo")))
+            .and(editor)
+            .and(todos)
             .build()
 
         // let mut buttons = div().class("buttons");

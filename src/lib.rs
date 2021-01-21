@@ -1,11 +1,20 @@
-#![recursion_limit="512"]
+#![recursion_limit = "512"]
 
 pub mod util;
 
+mod app;
 pub mod dom;
-
 pub mod vdom;
-pub use vdom::{component::Component, VNode};
+
+pub use app::{boot, Component, Context, ShouldRender};
+
+type AnyBox = Box<dyn std::any::Any>;
+
+fn into_any_box(value: impl std::any::Any) -> AnyBox {
+    Box::new(value)
+}
+
+pub use vdom::VNode;
 
 use wasm_bindgen::JsCast;
 
@@ -43,19 +52,6 @@ pub fn query_selector(sel: &str) -> Option<web_sys::Node> {
         .map(|x| x.unchecked_into())
 }
 
-pub fn boot<C: Component>(props: C::Properties, node: web_sys::Element) {
-    vdom::component::AppHandle::<C>::boot(props, node, None)
-}
-
-pub fn boot_routed<C, F>(props: C::Properties, node: web_sys::Element, mapper: F)
-where
-    C: Component,
-    F: Fn(String) -> Option<C::Msg> + 'static,
-{
-    let mapper = Box::new(mapper);
-    vdom::component::AppHandle::<C>::boot(props, node, Some(mapper))
-}
-
 #[macro_export]
 macro_rules! enable_props {
     ($prop:ty => $comp:ty) => {
@@ -71,12 +67,12 @@ macro_rules! enable_props {
 #[macro_export]
 macro_rules! rsx {
     ( $tag:ident $($extra:tt)* ) => {
-        rsx!( 
+        rsx!(
             !
             (
                 $crate::vdom::TagBuilder::new($crate::dom::Tag::$tag)
             )
-            $($extra)* 
+            $($extra)*
         )
     };
 

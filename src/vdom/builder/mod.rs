@@ -1,11 +1,12 @@
+use std::rc::Rc;
+
 use crate::{
+    app::EventCallbackId,
     dom::{Attr, Event, Tag},
-    Component,
+    into_any_box, Component,
 };
 
-use super::{
-    event_manager::EventCallbackId, EventHandler, Listener, VComponent, VNode, VTag, VText,
-};
+use super::{EventHandler, Listener, VComponent, VNode, VTag, VText};
 
 pub fn component<C: Component, M>(props: C::Properties) -> VNode<M> {
     VNode::Component(VComponent::new::<C>(props))
@@ -142,24 +143,30 @@ impl<M> TagBuilder<M> {
         VNode::Tag(self.tag)
     }
 
-    pub fn on(mut self, event: Event, handler: fn(web_sys::Event) -> Option<M>) -> Self {
-        self.tag.listeners.push(Listener {
-            event,
-            handler: EventHandler::Fn(handler),
-            callback_id: EventCallbackId::new_null(),
-        });
+    pub fn on(self, event: Event, handler: fn(web_sys::Event) -> Option<M>) -> Self
+    where
+        M: 'static,
+    {
+        // self.tag.listeners.push(Listener {
+        //     event,
+        //     handler: EventHandler::Closure(Rc::new(|ev| handler(ev).map(into_any_box))),
+        //     callback_id: EventCallbackId::new_null(),
+        // });
 
-        self
+        self.on_captured(event, handler)
     }
 
     pub fn on_captured(
         mut self,
         event: Event,
         handler: impl Fn(web_sys::Event) -> Option<M> + 'static,
-    ) -> Self {
+    ) -> Self
+    where
+        M: 'static,
+    {
         self.tag.listeners.push(Listener {
             event,
-            handler: EventHandler::Closure(std::rc::Rc::new(handler)),
+            handler: EventHandler::Closure(Rc::new(move |ev| handler(ev).map(into_any_box))),
             callback_id: EventCallbackId::new_null(),
         });
 

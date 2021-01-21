@@ -1,9 +1,8 @@
 use wasm_bindgen::JsCast;
 
-use super::{
-    component::{AnyBox, AppHandle, Component, ComponentId},
-    EventHandler,
-};
+use crate::{vdom::EventHandler, AnyBox};
+
+use super::{component_manager::ComponentId, handle::AppHandle};
 
 pub type EventCallbackClosure = wasm_bindgen::closure::Closure<dyn Fn(web_sys::Event)>;
 
@@ -20,65 +19,54 @@ impl EventCallbackId {
     }
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
-pub(crate) struct DynamicEventCallbackId(u32);
-
-impl DynamicEventCallbackId {
-    pub fn new_null() -> Self {
-        Self(0)
-    }
-
-    fn is_null(&self) -> bool {
-        self.0 == 0
-    }
+#[derive(Clone)]
+pub struct ComponentEventHandler {
+    id: ComponentId,
+    handler: EventHandler,
 }
 
-pub enum ManagedEvent<M> {
-    Root(EventHandler<M>),
-    Child {
-        id: ComponentId,
-        handler: EventHandler<AnyBox>,
-    },
-}
+impl ComponentEventHandler {
+    pub fn new(id: ComponentId, handler: EventHandler) -> Self {
+        Self { id, handler }
+    }
 
-impl<M> Clone for ManagedEvent<M> {
-    fn clone(&self) -> Self {
-        match self {
-            Self::Root(r) => Self::Root(r.clone()),
-            Self::Child { id, handler } => Self::Child {
-                id: *id,
-                handler: handler.clone(),
-            },
-        }
+    #[inline]
+    pub fn component_id(&self) -> ComponentId {
+        self.id
+    }
+
+    #[inline]
+    pub fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
+        self.handler.invoke(event)
     }
 }
 
 // TODO: implement a swap and replace functionality to allow reusing the same
 // handler without re-attaching by the patcher.
-pub struct EventManager<C: Component> {
+pub struct EventManager {
     // TODO: prevent need for option and unwraps. (?)
-    component: Option<AppHandle<C>>,
+    app: Option<AppHandle>,
     /// Event handlers for the root app.
-    handlers: Vec<ManagedEvent<C::Msg>>,
+    handlers: Vec<ComponentEventHandler>,
     closures: Vec<EventCallbackClosure>,
     idle: Vec<usize>,
 }
 
-impl<C: Component> EventManager<C> {
+impl EventManager {
     pub fn new() -> Self {
         Self {
-            component: None,
+            app: None,
             handlers: Vec::new(),
             closures: Vec::new(),
             idle: Vec::new(),
         }
     }
 
-    pub(crate) fn set_component(&mut self, c: AppHandle<C>) {
-        self.component = Some(c);
+    pub(crate) fn set_app(&mut self, c: AppHandle) {
+        self.app = Some(c);
     }
 
-    pub(crate) fn get_handler(&self, id: EventCallbackId) -> Option<ManagedEvent<C::Msg>> {
+    pub(crate) fn get_handler(&self, id: EventCallbackId) -> Option<ComponentEventHandler> {
         self.handlers.get(id.0 as usize - 1).cloned()
     }
 
@@ -90,7 +78,7 @@ impl<C: Component> EventManager<C> {
 
     pub(crate) fn build(
         &mut self,
-        handler: ManagedEvent<C::Msg>,
+        handler: ComponentEventHandler,
     ) -> (EventCallbackId, &js_sys::Function) {
         if let Some(index) = self.idle.pop() {
             // Old handler can be reused.
@@ -107,7 +95,7 @@ impl<C: Component> EventManager<C> {
             {
                 let id = id.clone();
                 let component = self
-                    .component
+                    .app
                     .as_ref()
                     .expect("Uninitialized component in EventManager")
                     .clone();
