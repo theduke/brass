@@ -52,6 +52,30 @@ impl<M> TagBuilder<M> {
         }
     }
 
+    pub fn and_class(mut self, class: &str) -> Self {
+        if let Some(old) = self.tag.attributes.get_mut(&Attr::Class) {
+            old.push(' ');
+            old.push_str(class);
+            self
+        } else {
+            self.class(class)
+        }
+    }
+
+    pub fn and_class_if(mut self, flag: bool, class: &str) -> Self {
+        if flag {
+            if let Some(old) = self.tag.attributes.get_mut(&Attr::Class) {
+                old.push(' ');
+                old.push_str(class);
+                self
+            } else {
+                self.class(class)
+            }
+        } else {
+            self
+        }
+    }
+
     #[inline]
     pub fn style_raw(self, style: &str) -> Self {
         self.attr(Attr::Style, style)

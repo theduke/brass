@@ -125,7 +125,7 @@ impl<C: Component> EventManager<C> {
     }
 
     pub(crate) fn recycle(&mut self, id: EventCallbackId) {
-        if !id.is_null() {
+        if !id.is_null() && self.idle.len() < 100 {
             self.idle.push(id.0 as usize - 1);
         }
     }

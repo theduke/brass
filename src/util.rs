@@ -1,4 +1,4 @@
-use std::{cell::RefCell, future::Ready, rc::Rc};
+use std::{cell::RefCell, collections::VecDeque, future::Ready, rc::Rc};
 
 use futures::future::Pending;
 use wasm_bindgen::{closure::Closure, JsCast};
@@ -10,12 +10,17 @@ pub fn window() -> web_sys::Window {
     web_sys::window().expect("Could not get window")
 }
 
+pub fn document() -> web_sys::Document {
+    // TODO: use OnceCell
+    window().document().expect("Could not get document")
+}
+
 /// A "HashMap" that internally uses a Vec for storage.
 /// This is a good storage data structure for attribute lists, since it has
 /// stable ordering and most dom elements have very few attributes.
 
 #[derive(Clone, Debug)]
-pub struct VecMap<T> {
+pub(crate) struct VecMap<T> {
     items: Vec<T>,
 }
 
@@ -41,7 +46,7 @@ where
 }
 
 /// A timeout future.
-pub struct Timeout {
+pub(crate) struct Timeout {
     closure: Option<Closure<dyn Fn()>>,
     // Javascript target time.
     target: f64,
@@ -101,7 +106,35 @@ impl std::future::Future for Timeout {
     }
 }
 
-pub fn timeout(delay: std::time::Duration) -> Timeout {
+pub(crate) fn timeout(delay: std::time::Duration) -> Timeout {
     let target = now() + delay.as_millis() as f64;
     Timeout::new(target)
 }
+
+// pub struct KeyboardSubscription<M> {
+//     target: web_sys::EventTarget,
+//     closure: Closure<dyn Fn(web_sys::Event)>,
+//     queue: Rc<RefCell<VecDeque<M>>>,
+// }
+
+// impl<M> futures::stream::Stream for KeyboardSubscription<M> {
+//     type Item = M;
+
+//     fn poll_next(
+//         self: std::pin::Pin<&mut Self>,
+//         cx: &mut std::task::Context<'_>,
+//     ) -> std::task::Poll<Option<Self::Item>> {
+//         let s = self.get_mut();
+
+//         if s.closure.is_none() {
+
+//             std::task::Poll::Pending
+//         } else {
+//             if let Some(msg) = s.queue.borrow_mut().pop_front() {
+//                 std::task::Poll::Ready(Some(msg))
+//             } else {
+//                 std::task::Poll::Pending
+//             }
+//         }
+//     }
+// }

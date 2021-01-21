@@ -1,4 +1,6 @@
-mod util;
+#![recursion_limit="512"]
+
+pub mod util;
 
 pub mod dom;
 
@@ -52,4 +54,41 @@ where
 {
     let mapper = Box::new(mapper);
     vdom::component::AppHandle::<C>::boot(props, node, Some(mapper))
+}
+
+#[macro_export]
+macro_rules! enable_props {
+    ($prop:ty => $comp:ty) => {
+        impl<M> copper::vdom::DomExtend<M> for $prop {
+            fn extend(self, parent: &mut TagBuilder<M>) {
+                let x = <$comp as copper::vdom::Component>::build(self);
+                parent.add_child(x);
+            }
+        }
+    };
+}
+
+#[macro_export]
+macro_rules! rsx {
+    ( $tag:ident $($extra:tt)* ) => {
+        rsx!( 
+            !
+            (
+                $crate::vdom::TagBuilder::new($crate::dom::Tag::$tag)
+            )
+            $($extra)* 
+        )
+    };
+
+    (! ( $($code:tt)* ) $attr:ident = $value:literal $( $extra:tt )* ) => {
+        rsx!(
+            !
+            ( $( $code )* .attr($crate::dom::Attr::$attr, $value) )
+            $( $extra )*
+        )
+    };
+
+    (! ( $($code:tt)* ) ) => {
+        $($code)*
+    };
 }

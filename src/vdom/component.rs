@@ -1,5 +1,6 @@
 use futures::{FutureExt, StreamExt};
 use std::{cell::RefCell, collections::VecDeque, marker::PhantomData, rc::Rc};
+
 use wasm_bindgen::{JsCast, JsValue};
 
 use web_sys::Node;
@@ -237,15 +238,16 @@ pub trait Component: Sized + 'static {
     type Properties;
     type Msg: 'static;
 
-    fn init(props: Self::Properties, context: Context<Self::Msg>) -> Self;
-    fn on_property_change(&mut self, new_props: Self::Properties, context: Context<Self::Msg>);
-    fn update(&mut self, msg: Self::Msg, context: Context<Self::Msg>);
+    fn init(props: Self::Properties, ctx: Context<Self::Msg>) -> Self;
+    fn update(&mut self, msg: Self::Msg, ctx: Context<Self::Msg>);
     fn render(&self) -> VNode<Self::Msg>;
 
     /// Construct a new VNode during rendering.
     fn build<M>(props: Self::Properties) -> VNode<M> {
         super::builder::component::<Self, M>(props)
     }
+
+    fn on_property_change(&mut self, props: Self::Properties, ctx: Context<Self::Msg>);
 }
 
 #[derive(PartialEq, Eq, Hash, Debug, Clone, Copy)]
@@ -275,6 +277,7 @@ impl ComponentConstructor {
 }
 
 trait DynamicComponent {
+    fn name(&self) -> &'static str;
     fn on_property_change(
         &mut self,
         new_props: AnyBox,
@@ -285,6 +288,10 @@ trait DynamicComponent {
 }
 
 impl<C: Component> DynamicComponent for C {
+    fn name(&self) -> &'static str {
+        std::any::type_name::<C>()
+    }
+
     fn on_property_change(
         &mut self,
         new_props: AnyBox,
@@ -620,6 +627,8 @@ impl<'a, C: Component> RenderContext<AnyBox> for NestedRenderContext<'a, C> {
 impl<C: Component> AppState<C> {
     // TODO: prevent code duplication with Self::mount_component ?
     fn render_child(&mut self, component_id: ComponentId) -> Option<()> {
+        // let start = crate::now();
+
         let (mut state, finisher) = self.component_manager.borrow(component_id)?;
 
         let mut new_vnode = state.component.render();
@@ -641,6 +650,9 @@ impl<C: Component> AppState<C> {
         state.last_vnode = new_vnode;
         state.node = new_node;
         finisher.return_component(&mut self.component_manager, state);
+
+        // let duration= crate::now() - start;
+        // trace!(?duration, "rendered child component");
 
         None
     }
