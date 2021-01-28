@@ -98,7 +98,10 @@ pub fn menu_list<M>() -> TagBuilder<M> {
 }
 
 pub fn icon_fa<M>(icon: &str) -> TagBuilder<M> {
-    span().class("icon").and(tag(Tag::I).class(icon))
+    span()
+        .class("icon")
+        .attr(Attr::AriaHidden, "true")
+        .and(tag(Tag::I).class(icon))
 }
 
 pub fn modal<M: Clone + 'static, C: DomExtend<M>>(content: C, on_close: M) -> TagBuilder<M> {
@@ -122,7 +125,10 @@ pub fn file_input<M>(
     on_input: fn(web_sys::Event) -> Option<M>,
     disabled: bool,
     multi: bool,
-) -> TagBuilder<M> {
+) -> TagBuilder<M>
+where
+    M: 'static,
+{
     let input = vdom::input()
         .class("file-input")
         .attr(Attr::Type, "file")
