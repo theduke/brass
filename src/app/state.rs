@@ -1,21 +1,48 @@
+use std::collections::HashMap;
+
 use wasm_bindgen::JsCast;
 
 use crate::{vdom::VComponent, AnyBox, Component};
 
 use super::{
-    component::{ComponentConstructor, InstantiatedComponent},
+    component::ComponentConstructor,
     component_manager::{ComponentId, ComponentManager},
     event_manager::{EventCallbackId, EventManager},
     handle::{AppHandle, ComponentAppHandle},
 };
+
+pub struct ContextContainer {
+    values: HashMap<std::any::TypeId, AnyBox>,
+}
+
+impl ContextContainer {
+    pub fn new() -> Self {
+        Self {
+            values: Default::default(),
+        }
+    }
+
+    pub fn register<T: 'static>(&mut self, value: T) {
+        let id = std::any::TypeId::of::<T>();
+        self.values.insert(id, Box::new(value));
+    }
+
+    pub fn get<T: 'static>(&mut self) -> Option<&T> {
+        let id = std::any::TypeId::of::<T>();
+        let value = self.values.get(&id)?;
+        value.downcast_ref()
+    }
+}
 
 pub(crate) struct AppState {
     pub window: web_sys::Window,
     pub document: web_sys::Document,
     // Render callback scheduled with requestAnimationFrame.
     animation_callback: wasm_bindgen::closure::Closure<dyn FnMut()>,
+
     pub event_manager: EventManager,
     component_manager: ComponentManager,
+    pub context: ContextContainer,
 
     root_render_queued: bool,
     render_queue: Vec<ComponentId>,
@@ -29,21 +56,25 @@ impl AppState {
         ComponentAppHandle::new(component_id, self.handle.clone().unwrap())
     }
 
-    // TODO: next sibling should be Element?
+    #[inline]
+    pub fn component_manager(&mut self) -> &mut ComponentManager {
+        &mut self.component_manager
+    }
+
     fn mount_component(
         &mut self,
         constructor: &ComponentConstructor,
         props: AnyBox,
         parent: &web_sys::Element,
         next_sibling: Option<&web_sys::Node>,
-    ) -> Option<web_sys::Node> {
+    ) -> (ComponentId, Option<web_sys::Node>) {
         let finisher = self.component_manager.reserve_id();
         let id = finisher.id();
 
         let state = constructor.call(self, id, props, parent.clone(), next_sibling.cloned());
         let node = state.node().cloned();
-        finisher.return_component(&mut self.component_manager, state);
-        node
+        finisher.return_component(&mut self.component_manager, Box::new(state));
+        (id, node)
     }
 
     pub fn mount_virtual_component<'a, 'b, 'c>(
@@ -55,38 +86,36 @@ impl AppState {
         if vcomp.id.is_none() {
             // New component.
 
-            self.mount_component(
+            let (id, node) = self.mount_component(
                 &vcomp.spec.constructor,
                 vcomp.spec.props.take().expect("No properties set"),
                 parent,
                 next_sibling,
-            )
+            );
+            vcomp.id = id;
+            node
         } else {
             // Existing component.
 
-            let state = self
+            let (mut comp, finisher) = self
                 .component_manager
-                .get_mut(vcomp.id)
+                .borrow(vcomp.id)
                 .expect("Component has gone away");
 
             // Transmuting away the lifetime.
             // This is safe because a single component state is guaranteed to
             // never be used concurrently.
-            let unsafe_state: &'static mut InstantiatedComponent =
-                unsafe { std::mem::transmute(state) };
+            // let unsafe_state: &'static mut InstantiatedComponent =
+            //     unsafe { std::mem::transmute(state) };
 
-            let node = unsafe_state.remount(
+            let node = comp.remount(
                 self,
                 vcomp.spec.props.take().unwrap_or_else(|| Box::new(())),
             );
 
-            node
-        }
-    }
+            finisher.return_component(&mut self.component_manager, comp);
 
-    pub fn remove_component(&mut self, id: ComponentId) {
-        if let Some(state) = self.component_manager.remove(id) {
-            state.remove_from_dom();
+            node
         }
     }
 
@@ -109,36 +138,39 @@ impl AppState {
     }
 
     pub fn update_component(&mut self, component_id: ComponentId, msg: AnyBox) {
-        let state = self
+        let (mut comp, finisher) = self
             .component_manager
-            .get_mut(component_id)
+            .borrow(component_id)
             .expect(&format!("Component disappeared: {:?}", component_id));
 
         // Transmuting away the lifetime.
         // This is safe because a single component state is guaranteed to
         // never be used concurrently.
-        let unsafe_state: &'static mut InstantiatedComponent =
-            unsafe { std::mem::transmute(state) };
+        // let unsafe_state: &'static mut InstantiatedComponent =
+        //     unsafe { std::mem::transmute(state) };
 
-        let should_render = unsafe_state.update(self, msg);
+        let should_render = comp.update(self, msg);
         if should_render {
             self.schedule_render_if_needed(Some(component_id));
         }
+
+        finisher.return_component(&mut self.component_manager, comp);
     }
 
     fn render_component(&mut self, component_id: ComponentId) {
-        let state = self
+        let (mut comp, finisher) = self
             .component_manager
-            .get_mut(component_id)
+            .borrow(component_id)
             .expect("Component has disappeared");
 
         // Transmuting away the lifetime.
         // This is safe because a single component state is guaranteed to
         // never be used concurrently.
-        let unsafe_state: &'static mut InstantiatedComponent =
-            unsafe { std::mem::transmute(state) };
+        // let unsafe_state: &'static mut InstantiatedComponent =
+        //     unsafe { std::mem::transmute(state) };
 
-        unsafe_state.render(self);
+        comp.render(self);
+        finisher.return_component(&mut self.component_manager, comp);
     }
 
     pub fn render(&mut self) {
@@ -179,10 +211,12 @@ impl AppState {
         Self {
             window,
             document,
-            event_manager: EventManager::new(),
             root_render_queued: false,
             render_queue: Vec::new(),
+
+            event_manager: EventManager::new(),
             component_manager: ComponentManager::new(),
+            context: ContextContainer::new(),
 
             // We first initialize the state with fake callbacks, since the real
             // ones need the AppHandle reference.
@@ -198,6 +232,7 @@ impl AppState {
         props: C::Properties,
         parent: web_sys::Element,
     ) {
+        self.handle = Some(handle.clone());
         let handle1 = handle.clone();
 
         self.animation_callback = wasm_bindgen::closure::Closure::wrap(Box::new(move || {
@@ -208,6 +243,5 @@ impl AppState {
 
         let cons = ComponentConstructor::new::<C>();
         self.mount_component(&cons, Box::new(props), &parent, None);
-        self.render();
     }
 }

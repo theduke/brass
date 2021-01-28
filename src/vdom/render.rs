@@ -76,10 +76,6 @@ impl<'a, C: Component> RenderContext<'a, C> {
         self.app.mount_virtual_component(comp, parent, next_sibling)
     }
 
-    fn remove_component(&mut self, id: ComponentId) {
-        self.app.remove_component(id);
-    }
-
     // Patching and rendering.
 
     fn render_tag(
@@ -205,7 +201,11 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }
 
         // Remove stale listeners.
-        for listener in &old.listeners[new.listeners.len()..] {
+        for listener in old.listeners.get(new.listeners.len()..).unwrap_or_default() {
+            if let Some(fun) = self.get_listener_closure(listener.callback_id) {
+                elem.remove_event_listener_with_callback(listener.event.as_str(), fun)
+                    .ok();
+            }
             self.remove_listener(listener.callback_id);
         }
 
@@ -235,6 +235,20 @@ impl<'a, C: Component> RenderContext<'a, C> {
         new.element = old.element;
     }
 
+    fn remove_component(
+        &mut self,
+        comp: VComponent,
+        parent: &web_sys::Element,
+        remove_from_dom: bool,
+    ) {
+        if let Some(mut c) = self.app.component_manager().remove(comp.id) {
+            self.remove_node(c.state_mut().take_last_vnode().into_typed(), parent);
+            if remove_from_dom {
+                c.remove_from_dom();
+            }
+        }
+    }
+
     #[inline]
     fn remove_node(&mut self, node: VNode<C::Msg>, parent: &web_sys::Element) {
         match node {
@@ -245,10 +259,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
             VNode::Tag(tag) => {
                 self.remove_tag(tag, parent);
             }
-
-            VNode::Component(c) => {
-                self.remove_component(c.id);
-            }
+            VNode::Component(c) => self.remove_component(c, parent, false),
         }
     }
 
@@ -267,7 +278,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         old: VNode<C::Msg>,
         new: &mut VNode<C::Msg>,
     ) -> Option<web_sys::Node> {
-        match new {
+        let x = match new {
             VNode::Empty => {
                 self.remove_node(old, parent);
                 None
@@ -316,7 +327,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
                         new_comp.id = old_comp.id;
                         self.mount_component(new_comp, parent, next_sibling)
                     } else {
-                        self.remove_component(old_comp.id);
+                        self.remove_component(old_comp, parent, true);
                         self.mount_component(new_comp, parent, next_sibling)
                     }
                 } else {
@@ -324,6 +335,8 @@ impl<'a, C: Component> RenderContext<'a, C> {
                     self.mount_component(new_comp, parent, next_sibling)
                 }
             }
-        }
+        };
+
+        x
     }
 }

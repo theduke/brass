@@ -7,7 +7,7 @@ mod handle;
 mod state;
 
 pub(crate) use self::{
-    component::ComponentConstructor,
+    component::{ComponentConstructor, InstantiatedComponent},
     component_manager::ComponentId,
     event_manager::{ComponentEventHandler, EventCallbackId},
     state::AppState,
@@ -16,6 +16,7 @@ pub(crate) use self::{
 pub use self::{
     component::{Component, ShouldRender},
     context::Context,
+    effect::{Callback, EffectGuard},
 };
 
 pub fn boot<C: Component>(props: C::Properties, node: web_sys::Element) {

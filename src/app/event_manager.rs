@@ -6,7 +6,7 @@ use super::{component_manager::ComponentId, handle::AppHandle};
 
 pub type EventCallbackClosure = wasm_bindgen::closure::Closure<dyn Fn(web_sys::Event)>;
 
-#[derive(Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
 pub(crate) struct EventCallbackId(u32);
 
 impl EventCallbackId {

@@ -422,6 +422,11 @@ pub fn tr<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Tr)
 }
 
+#[inline]
+pub fn tr_with<M>(content: impl DomExtend<M>) -> TagBuilder<M> {
+    TagBuilder::new(Tag::Tr).and(content)
+}
+
 pub fn th<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Th)
 }
@@ -429,6 +434,11 @@ pub fn th<M>() -> TagBuilder<M> {
 #[inline]
 pub fn td<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Td)
+}
+
+#[inline]
+pub fn td_with<M>(content: impl DomExtend<M>) -> TagBuilder<M> {
+    TagBuilder::new(Tag::Td).and(content)
 }
 
 #[inline]

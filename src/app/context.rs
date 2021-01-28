@@ -44,6 +44,16 @@ impl<'a, M> Context<'a, M> {
         self.skip_render = true;
     }
 
+    // Context related.
+
+    pub fn register<T: 'static>(&mut self, value: T) {
+        self.app.context.register(value);
+    }
+
+    pub fn get<T: 'static>(&mut self) -> Option<&T> {
+        self.app.context.get::<T>()
+    }
+
     // pub fn navigate(&mut self, route: String) {
     //     match &mut self.state {
     //         ContextState::Direct { effect } => effect.and(Effect::Navigate(route)),

@@ -6,7 +6,7 @@ mod app;
 pub mod dom;
 pub mod vdom;
 
-pub use app::{boot, Component, Context, ShouldRender};
+pub use app::{boot, Callback, Component, Context, EffectGuard, ShouldRender};
 
 type AnyBox = Box<dyn std::any::Any>;
 

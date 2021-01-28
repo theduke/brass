@@ -30,10 +30,10 @@ pub trait Component: Sized + 'static {
     /// event listeners.
     fn on_unmount(&mut self) {}
 
-    // Construct a new VNode during rendering.
-    // fn build<M>(props: Self::Properties) -> VNode<M> {
-    //     super::builder::component::<Self, M>(props)
-    // }
+    /// Construct a new VNode during rendering.
+    fn build<M>(props: Self::Properties) -> VNode<M> {
+        crate::vdom::component::<Self, M>(props)
+    }
 }
 
 type BoxedComponent = Box<dyn DynamicComponent>;
@@ -126,6 +126,8 @@ impl<C: Component> DynamicComponent for C {
         let mut vnode = self.render();
         let last_vnode = state.take_last_vnode().into_typed();
 
+        // trace!(?state, "dyn_render component {}", self.name());
+
         let mut render_ctx = RenderContext::<C>::new(app, state.id());
         let node = render_ctx.patch(
             &state.parent,
@@ -207,6 +209,7 @@ impl ComponentConstructor {
     }
 }
 
+#[derive(Debug)]
 pub(crate) struct ComponentState {
     id: ComponentId,
     /// VNode from the previous render.
@@ -242,6 +245,17 @@ pub(crate) struct InstantiatedComponent {
     state: ComponentState,
 }
 
+impl Drop for InstantiatedComponent {
+    fn drop(&mut self) {
+        if !self.state.effect_guards.is_empty() {
+            tracing::warn!(
+                "Component destroyed while '{}' unguarded effects are still active",
+                self.state.effect_guards.len()
+            );
+        }
+    }
+}
+
 impl InstantiatedComponent {
     // #[inline]
     // pub fn register_effect(&mut self, guard: EffectGuard) {
@@ -273,5 +287,10 @@ impl InstantiatedComponent {
             self.state.parent.remove_child(&node).ok();
         }
         self
+    }
+
+    #[inline]
+    pub fn state_mut(&mut self) -> &mut ComponentState {
+        &mut self.state
     }
 }
