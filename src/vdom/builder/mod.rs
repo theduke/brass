@@ -27,6 +27,10 @@ impl<M> TagBuilder<M> {
         parent.into().and(self)
     }
 
+    pub fn add_attr(&mut self, attr: Attr, value: impl Into<String>) {
+        self.tag.attributes.insert(attr.into(), value.into());
+    }
+
     pub fn attr(mut self, attribute: Attr, value: impl Into<String>) -> Self {
         self.tag.attributes.insert(attribute.into(), value.into());
         self
@@ -377,6 +381,10 @@ pub fn h4<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::H4)
 }
 
+pub fn h5<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::H5)
+}
+
 #[inline]
 pub fn ul<M>() -> TagBuilder<M> {
     TagBuilder::new(Tag::Ul)
@@ -452,6 +460,11 @@ pub fn a_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
 }
 
 // Form related.
+
+#[inline]
+pub fn form<M>() -> TagBuilder<M> {
+    TagBuilder::new(Tag::Form)
+}
 
 #[inline]
 pub fn label<M>() -> TagBuilder<M> {

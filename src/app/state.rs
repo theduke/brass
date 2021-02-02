@@ -174,20 +174,9 @@ impl AppState {
     }
 
     pub fn render(&mut self) {
-        // let start = crate::now();
-
-        // If only a single child render is queued, we only re-render the child.
-        // Otherwise the whole tree.
-        // FIXME: be smarter here by determining the highest ancestors that need
-        // re-render.
-        // trace!(?self.root_render_queued, children=?self.child_render_queue.len(), "render start");
-        if self.render_queue.len() == 1 {
-            if let Some(id) = self.render_queue.pop() {
-                self.render_component(id);
-            }
-        } else {
-            self.render_component(ComponentId::ROOT);
-            self.render_queue.clear();
+        // FIXME: determine the minimal sub-tree to re-render.
+        while let Some(id) = self.render_queue.pop() {
+            self.render_component(id);
         }
     }
 

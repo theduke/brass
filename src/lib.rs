@@ -34,6 +34,12 @@ pub fn input_event_value(ev: web_sys::Event) -> Option<String> {
     Some(v)
 }
 
+pub fn input_event_checkbox_value(ev: web_sys::Event) -> Option<bool> {
+    ev.current_target()?
+        .dyn_ref::<web_sys::HtmlInputElement>()
+        .map(|x| x.checked())
+}
+
 pub fn textarea_input_value(ev: web_sys::Event) -> Option<String> {
     let v = ev
         .current_target()?
