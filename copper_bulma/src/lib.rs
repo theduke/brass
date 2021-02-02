@@ -4,6 +4,31 @@ use copper::{
 };
 use vdom::{span, tag};
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Color {
+    Default,
+    Primary,
+    Link,
+    Info,
+    Success,
+    Warning,
+    Danger,
+}
+
+impl Color {
+    pub fn as_class(self) -> &'static str {
+        match self {
+            Color::Default => "",
+            Color::Primary => "is-primary",
+            Color::Link => "is-link",
+            Color::Info => "is-info",
+            Color::Success => "is-success",
+            Color::Warning => "is-warning",
+            Color::Danger => "is-danger",
+        }
+    }
+}
+
 pub fn box_<M>() -> TagBuilder<M> {
     div().class("box")
 }
@@ -93,6 +118,30 @@ pub fn h2_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
     vdom::h2().class("title is-2").and(content)
 }
 
+pub fn h3<M>() -> TagBuilder<M> {
+    vdom::h3().class("title is-3")
+}
+
+pub fn h3_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+    vdom::h3().class("title is-3").and(content)
+}
+
+pub fn h4<M>() -> TagBuilder<M> {
+    vdom::h4().class("title is-4")
+}
+
+pub fn h4_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+    vdom::h4().class("title is-4").and(content)
+}
+
+pub fn h5<M>() -> TagBuilder<M> {
+    vdom::h5().class("title is-5")
+}
+
+pub fn h5_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+    vdom::h5().class("title is-5").and(content)
+}
+
 pub fn menu_list<M>() -> TagBuilder<M> {
     vdom::ul().class("menu-list")
 }
@@ -164,4 +213,115 @@ pub fn panel_icon_fa<M>(icon: &str) -> TagBuilder<M> {
     span()
         .class("panel-icon")
         .and(vdom::tag(Tag::I).class(icon))
+}
+
+pub struct Help<T> {
+    pub message: T,
+    pub color: Color,
+}
+
+impl<M, T> DomExtend<M> for Help<T>
+where
+    T: DomExtend<M>,
+{
+    fn extend(self, parent: &mut TagBuilder<M>) {
+        let content = field_help()
+            .and_class(self.color.as_class())
+            .and(self.message);
+        parent.add_child(content);
+    }
+}
+
+pub struct Field<C> {
+    pub label: String,
+    pub help: Option<Help<String>>,
+    pub control: C,
+}
+
+impl<C> Field<C> {
+    pub fn render<M>(self) -> TagBuilder<M>
+    where
+        C: DomExtend<M>,
+    {
+        field()
+            .and(label_with(self.label))
+            .and(control_with(self.control))
+            .and(self.help)
+    }
+}
+
+impl<M, C> DomExtend<M> for Field<C>
+where
+    C: DomExtend<M> + 'static,
+    M: 'static,
+{
+    fn extend(self, parent: &mut TagBuilder<M>) {
+        parent.add_child(self.render());
+    }
+}
+
+pub struct Input<F> {
+    pub _type: &'static str,
+    pub color: Color,
+    pub placeholder: Option<String>,
+    pub value: String,
+    pub on_input: F,
+}
+
+impl<F, M> DomExtend<M> for Input<F>
+where
+    F: Fn(String) -> Option<M> + Clone + 'static,
+    M: 'static,
+{
+    fn extend(self, parent: &mut TagBuilder<M>) {
+        let on_input = self.on_input;
+        let mut inp = input()
+            .and_class(self.color.as_class())
+            .attr(Attr::Value, self.value)
+            .on_captured(Event::Input, move |ev| {
+                copper::input_event_value(ev).and_then(|v| on_input(v))
+            });
+
+        if let Some(placeholder) = self.placeholder {
+            inp.add_attr(Attr::Placeholder, placeholder);
+        }
+
+        parent.add_child(inp);
+    }
+}
+
+pub struct Checkbox<F> {
+    pub color: Color,
+    pub label: String,
+    pub value: bool,
+    pub on_input: F,
+}
+
+impl<F, M> Checkbox<F>
+where
+    F: Fn(bool) -> Option<M> + Clone + 'static,
+    M: 'static,
+{
+    pub fn render(self) -> TagBuilder<M> {
+        let on_input = self.on_input;
+
+        let inp = vdom::input()
+            .attr(Attr::Type, "checkbox")
+            .on_captured(Event::Input, move |ev| {
+                copper::input_event_checkbox_value(ev).and_then(|flag| on_input(flag))
+            });
+        let lbl = vdom::label().class("checkbox").and(inp).and(self.label);
+        let ctrl = control().and(lbl);
+        field().and(ctrl)
+    }
+}
+
+impl<F, M> DomExtend<M> for Checkbox<F>
+where
+    F: Fn(bool) -> Option<M> + Clone + 'static,
+    M: 'static,
+{
+    fn extend(self, parent: &mut TagBuilder<M>) {
+        parent.add_child(self.render());
+    }
 }
