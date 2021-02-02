@@ -45,9 +45,9 @@ impl EffectGuardHandle {
         self.is_cancelled.get()
     }
 
-    pub fn force_cancel(&self) {
-        self.is_cancelled.set(true);
-    }
+    // pub fn force_cancel(&self) {
+    //     self.is_cancelled.set(true);
+    // }
 }
 
 /// A future that supports cancellation.

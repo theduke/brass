@@ -7,7 +7,7 @@ mod handle;
 mod state;
 
 pub(crate) use self::{
-    component::{ComponentConstructor, InstantiatedComponent},
+    component::ComponentConstructor,
     component_manager::ComponentId,
     event_manager::{ComponentEventHandler, EventCallbackId},
     state::AppState,

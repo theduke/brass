@@ -11,10 +11,10 @@ impl ComponentId {
         index: 0,
         revision: 0,
     };
-    pub const ROOT: Self = Self {
-        index: 1,
-        revision: 0,
-    };
+    // pub const ROOT: Self = Self {
+    //     index: 1,
+    //     revision: 0,
+    // };
 
     pub fn is_none(self) -> bool {
         self == Self::NONE

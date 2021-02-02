@@ -166,10 +166,8 @@ impl copper::Component for App {
 
         div()
             .and(h2().and(text("Copper - Todo")))
-            // .and(editor)
-            // .and(todos)
-            .and(component::<Counter, _>(true))
-            // .and_iter((0..400).map(|_| component::<Counter, _>(true)))
+            .and(editor)
+            .and(todos)
             .build()
 
         // let mut buttons = div().class("buttons");

@@ -3,8 +3,6 @@ pub mod render;
 mod builder;
 pub use builder::*;
 
-use wasm_bindgen::JsValue;
-
 use std::{collections::HashMap, marker::PhantomData, rc::Rc};
 
 use crate::{
@@ -37,20 +35,20 @@ impl OptionalNode {
         Self(wasm_bindgen::JsValue::UNDEFINED.unchecked_into())
     }
 
-    #[inline]
-    pub fn is_none(&self) -> bool {
-        let v: &wasm_bindgen::JsValue = self.0.as_ref();
-        v == &JsValue::UNDEFINED
-    }
+    // #[inline]
+    // pub fn is_none(&self) -> bool {
+    //     let v: &wasm_bindgen::JsValue = self.0.as_ref();
+    //     v == &JsValue::UNDEFINED
+    // }
 
-    #[inline]
-    pub fn as_option(&self) -> Option<&web_sys::Node> {
-        if self.is_none() {
-            None
-        } else {
-            Some(&self.0)
-        }
-    }
+    // #[inline]
+    // pub fn as_option(&self) -> Option<&web_sys::Node> {
+    //     if self.is_none() {
+    //         None
+    //     } else {
+    //         Some(&self.0)
+    //     }
+    // }
 }
 
 /// Wrapper around a [`web_sys::Element`].
@@ -78,11 +76,11 @@ impl OptionalElement {
         Self(wasm_bindgen::JsValue::UNDEFINED.unchecked_into())
     }
 
-    #[inline]
-    pub fn is_none(&self) -> bool {
-        let v: &wasm_bindgen::JsValue = self.0.as_ref();
-        v == &JsValue::UNDEFINED
-    }
+    // #[inline]
+    // pub fn is_none(&self) -> bool {
+    //     let v: &wasm_bindgen::JsValue = self.0.as_ref();
+    //     v == &JsValue::UNDEFINED
+    // }
 }
 
 // TODO: use cow or https://github.com/maciejhirsz/beef ?

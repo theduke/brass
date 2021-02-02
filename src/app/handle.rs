@@ -3,9 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::AnyBox;
 
 use super::{
-    component::Component,
-    component_manager::{ComponentId, ComponentManager},
-    event_manager::{EventCallbackId, EventManager},
+    component::Component, component_manager::ComponentId, event_manager::EventCallbackId,
     state::AppState,
 };
 

@@ -213,7 +213,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         let mut old_iter = old.children.into_iter();
         let mut new_iter = new.children.iter_mut();
 
-        let mut last_sibling = None;
+        // let mut last_sibling = None;
 
         loop {
             match (old_iter.next(), new_iter.next()) {
@@ -221,13 +221,13 @@ impl<'a, C: Component> RenderContext<'a, C> {
                     break;
                 }
                 (None, Some(child)) => {
-                    last_sibling = self.render(elem, None, child);
+                    self.render(elem, None, child);
                 }
                 (Some(old), None) => {
                     self.remove_node(old, elem);
                 }
                 (Some(old_tag), Some(new_tag)) => {
-                    last_sibling = self.patch(elem, None, old_tag, new_tag);
+                    self.patch(elem, None, old_tag, new_tag);
                 }
             }
         }
