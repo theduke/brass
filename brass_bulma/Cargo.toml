@@ -1,5 +1,5 @@
 [package]
-name = "copper_bulma"
+name = "brass_bulma"
 version = "0.1.0"
 authors = ["Christoph Herzog <chris@theduke.at>"]
 edition = "2018"
@@ -7,7 +7,7 @@ edition = "2018"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-copper = { path = "../" }
+brass = { path = "../" }
 
 [dependencies.web-sys]
 version = "0.3.46"

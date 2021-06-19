@@ -1,6 +1,6 @@
 use std::{cell::RefCell, rc::Rc};
 
-use crate::AnyBox;
+use crate::any::AnyBox;
 
 use super::{
     component::Component, component_manager::ComponentId, event_manager::EventCallbackId,

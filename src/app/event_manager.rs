@@ -1,6 +1,6 @@
 use wasm_bindgen::JsCast;
 
-use crate::{vdom::EventHandler, AnyBox};
+use crate::{any::AnyBox, vdom::EventCallback};
 
 use super::{component_manager::ComponentId, handle::AppHandle};
 
@@ -22,11 +22,11 @@ impl EventCallbackId {
 #[derive(Clone)]
 pub struct ComponentEventHandler {
     id: ComponentId,
-    handler: EventHandler,
+    handler: EventCallback,
 }
 
 impl ComponentEventHandler {
-    pub fn new(id: ComponentId, handler: EventHandler) -> Self {
+    pub fn new(id: ComponentId, handler: EventCallback) -> Self {
         Self { id, handler }
     }
 

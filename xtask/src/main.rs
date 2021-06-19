@@ -32,7 +32,7 @@ fn todo_build() {
             // "--reference-types",
             "--out-dir",
             "examples/todo/pkg",
-            "./target/wasm32-unknown-unknown/debug/copper_todo.wasm",
+            "./target/wasm32-unknown-unknown/debug/brass_todo.wasm",
         ],
     )
 }

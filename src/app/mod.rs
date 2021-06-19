@@ -14,7 +14,7 @@ pub(crate) use self::{
 };
 
 pub use self::{
-    component::{Component, ShouldRender},
+    component::{Component, RenderContext, ShouldRender},
     context::Context,
     effect::{Callback, EffectGuard},
 };

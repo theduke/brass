@@ -1,6 +1,6 @@
-use copper::{
+use brass::{
     dom::{Attr, Event, Tag},
-    vdom::{self, div, DomExtend, TagBuilder},
+    vdom::{self, div, DomExtend, EventCallback, TagBuilder},
 };
 use vdom::{span, tag};
 
@@ -29,155 +29,147 @@ impl Color {
     }
 }
 
-pub fn box_<M>() -> TagBuilder<M> {
+pub fn box_() -> TagBuilder {
     div().class("box")
 }
 
-pub fn navbar_main<M>() -> TagBuilder<M> {
+pub fn navbar_main() -> TagBuilder {
     div()
         .class("navbar")
         .attr(Attr::Role, "navigation")
         .attr(Attr::AriaLabel, "main-navigation")
 }
 
-pub fn navbar_brand<M>() -> TagBuilder<M> {
+pub fn navbar_brand() -> TagBuilder {
     div().class("navbar-brand")
 }
 
-pub fn navbar_menu<M>() -> TagBuilder<M> {
+pub fn navbar_menu() -> TagBuilder {
     div().class("navbar-menu")
 }
 
-pub fn navbar_start<M>() -> TagBuilder<M> {
+pub fn navbar_start() -> TagBuilder {
     div().class("navbar-start")
 }
 
-pub fn navbar_item_with<M>(content: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn navbar_item_with(content: impl DomExtend) -> TagBuilder {
     div().class("navbar-item").and(content)
 }
 
 // Forms.
 
-pub fn field<M>() -> TagBuilder<M> {
+pub fn field() -> TagBuilder {
     div().class("field")
 }
 
-pub fn field_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn field_with<C: DomExtend>(content: C) -> TagBuilder {
     div().class("field").and(content)
 }
 
-pub fn label<M>() -> TagBuilder<M> {
+pub fn label() -> TagBuilder {
     vdom::label().class("label")
 }
 
-pub fn label_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn label_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::label().class("label").and(content)
 }
 
-pub fn control<M>() -> TagBuilder<M> {
+pub fn control() -> TagBuilder {
     div().class("control")
 }
 
-pub fn control_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn control_with<C: DomExtend>(content: C) -> TagBuilder {
     div().class("control").and(content)
 }
 
-pub fn input<M>() -> TagBuilder<M> {
+pub fn input() -> TagBuilder {
     vdom::input().class("input")
 }
 
-pub fn input_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn input_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::input().class("input").and(content)
 }
 
-pub fn field_help<M>() -> TagBuilder<M> {
+pub fn field_help() -> TagBuilder {
     vdom::p().class("help")
 }
 
-pub fn field_help_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn field_help_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::p().class("help").and(content)
 }
 
-pub fn button<M>() -> TagBuilder<M> {
+pub fn button() -> TagBuilder {
     vdom::button().class("button")
 }
 
-pub fn button_medium<M>() -> TagBuilder<M> {
+pub fn button_medium() -> TagBuilder {
     vdom::button().class("button is-medium")
 }
 
-pub fn button_large<M>() -> TagBuilder<M> {
+pub fn button_large() -> TagBuilder {
     vdom::button().class("button is-large")
 }
 
-pub fn h2<M>() -> TagBuilder<M> {
+pub fn h2() -> TagBuilder {
     vdom::h2().class("title is-2")
 }
 
-pub fn h2_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn h2_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::h2().class("title is-2").and(content)
 }
 
-pub fn h3<M>() -> TagBuilder<M> {
+pub fn h3() -> TagBuilder {
     vdom::h3().class("title is-3")
 }
 
-pub fn h3_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn h3_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::h3().class("title is-3").and(content)
 }
 
-pub fn h4<M>() -> TagBuilder<M> {
+pub fn h4() -> TagBuilder {
     vdom::h4().class("title is-4")
 }
 
-pub fn h4_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn h4_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::h4().class("title is-4").and(content)
 }
 
-pub fn h5<M>() -> TagBuilder<M> {
+pub fn h5() -> TagBuilder {
     vdom::h5().class("title is-5")
 }
 
-pub fn h5_with<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn h5_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::h5().class("title is-5").and(content)
 }
 
-pub fn menu_list<M>() -> TagBuilder<M> {
+pub fn menu_list() -> TagBuilder {
     vdom::ul().class("menu-list")
 }
 
-pub fn icon_fa<M>(icon: &str) -> TagBuilder<M> {
+pub fn icon_fa(icon: &str) -> TagBuilder {
     span()
         .class("icon")
         .attr(Attr::AriaHidden, "true")
         .and(tag(Tag::I).class(icon))
 }
 
-pub fn modal<M: Clone + 'static, C: DomExtend<M>>(content: C, on_close: M) -> TagBuilder<M> {
+pub fn modal<C: DomExtend>(content: C, on_close: EventCallback) -> TagBuilder {
     let on_close2 = on_close.clone();
     let bg = div()
         .class("modal-background")
-        .on_captured(Event::Click, move |_| Some(on_close.clone()));
+        .on(Event::Click, on_close.clone());
 
     let inner = div().class("modal-content").and(content);
 
     let close = button()
         .class("modal-close is-large")
         .attr(Attr::AriaLabel, "close")
-        .on_captured(Event::Click, move |_| Some(on_close2.clone()));
+        .on(Event::Click, on_close2);
 
     div().class("modal is-active").and(bg).and(inner).and(close)
 }
 
-pub fn file_input<M>(
-    label: &str,
-    on_input: fn(web_sys::Event) -> Option<M>,
-    disabled: bool,
-    multi: bool,
-) -> TagBuilder<M>
-where
-    M: 'static,
-{
+pub fn file_input(label: &str, on_input: EventCallback, disabled: bool, multi: bool) -> TagBuilder {
     let input = vdom::input()
         .class("file-input")
         .attr(Attr::Type, "file")
@@ -197,19 +189,19 @@ where
 
 // Panels.
 
-pub fn panel<M>() -> TagBuilder<M> {
+pub fn panel() -> TagBuilder {
     vdom::tag(Tag::Nav).class("panel")
 }
 
-pub fn panel_heading<M, C: DomExtend<M>>(content: C) -> TagBuilder<M> {
+pub fn panel_heading<C: DomExtend>(content: C) -> TagBuilder {
     vdom::p_with(content).class("panel-heading")
 }
 
-pub fn panel_block<M>() -> TagBuilder<M> {
+pub fn panel_block() -> TagBuilder {
     div().class("panel-block")
 }
 
-pub fn panel_icon_fa<M>(icon: &str) -> TagBuilder<M> {
+pub fn panel_icon_fa(icon: &str) -> TagBuilder {
     span()
         .class("panel-icon")
         .and(vdom::tag(Tag::I).class(icon))
@@ -220,11 +212,11 @@ pub struct Help<T> {
     pub color: Color,
 }
 
-impl<M, T> DomExtend<M> for Help<T>
+impl<T> DomExtend for Help<T>
 where
-    T: DomExtend<M>,
+    T: DomExtend,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         let content = field_help()
             .and_class(self.color.as_class())
             .and(self.message);
@@ -239,9 +231,9 @@ pub struct Field<C> {
 }
 
 impl<C> Field<C> {
-    pub fn render<M>(self) -> TagBuilder<M>
+    pub fn render(self) -> TagBuilder
     where
-        C: DomExtend<M>,
+        C: DomExtend,
     {
         field()
             .and(label_with(self.label))
@@ -250,37 +242,29 @@ impl<C> Field<C> {
     }
 }
 
-impl<M, C> DomExtend<M> for Field<C>
+impl<C> DomExtend for Field<C>
 where
-    C: DomExtend<M> + 'static,
-    M: 'static,
+    C: DomExtend + 'static,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(self.render());
     }
 }
 
-pub struct Input<F> {
+pub struct Input {
     pub _type: &'static str,
     pub color: Color,
     pub placeholder: Option<String>,
     pub value: String,
-    pub on_input: F,
+    pub on_input: EventCallback,
 }
 
-impl<F, M> DomExtend<M> for Input<F>
-where
-    F: Fn(String) -> Option<M> + Clone + 'static,
-    M: 'static,
-{
-    fn extend(self, parent: &mut TagBuilder<M>) {
-        let on_input = self.on_input;
+impl DomExtend for Input {
+    fn extend(self, parent: &mut TagBuilder) {
         let mut inp = input()
             .and_class(self.color.as_class())
             .attr(Attr::Value, self.value)
-            .on_captured(Event::Input, move |ev| {
-                copper::input_event_value(ev).and_then(|v| on_input(v))
-            });
+            .on(Event::Input, self.on_input);
 
         if let Some(placeholder) = self.placeholder {
             inp.add_attr(Attr::Placeholder, placeholder);
@@ -290,38 +274,26 @@ where
     }
 }
 
-pub struct Checkbox<F> {
+pub struct Checkbox {
     pub color: Color,
     pub label: String,
     pub value: bool,
-    pub on_input: F,
+    pub on_input: EventCallback,
 }
 
-impl<F, M> Checkbox<F>
-where
-    F: Fn(bool) -> Option<M> + Clone + 'static,
-    M: 'static,
-{
-    pub fn render(self) -> TagBuilder<M> {
-        let on_input = self.on_input;
-
+impl Checkbox {
+    pub fn render(self) -> TagBuilder {
         let inp = vdom::input()
             .attr(Attr::Type, "checkbox")
-            .on_captured(Event::Input, move |ev| {
-                copper::input_event_checkbox_value(ev).and_then(|flag| on_input(flag))
-            });
+            .on(Event::Input, self.on_input);
         let lbl = vdom::label().class("checkbox").and(inp).and(self.label);
         let ctrl = control().and(lbl);
         field().and(ctrl)
     }
 }
 
-impl<F, M> DomExtend<M> for Checkbox<F>
-where
-    F: Fn(bool) -> Option<M> + Clone + 'static,
-    M: 'static,
-{
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl DomExtend for Checkbox {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(self.render());
     }
 }

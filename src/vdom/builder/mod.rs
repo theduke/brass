@@ -1,29 +1,27 @@
-use std::rc::Rc;
-
 use crate::{
     app::EventCallbackId,
     dom::{Attr, Event, Tag},
-    into_any_box, Component,
+    Component,
 };
 
-use super::{EventHandler, Listener, VComponent, VNode, VTag, VText};
+use super::{EventCallback, EventHandler, VComponent, VNode, VTag, VText};
 
-pub fn component<C: Component, M>(props: C::Properties) -> VNode<M> {
+pub fn component<C: Component>(props: C::Properties) -> VNode {
     VNode::Component(VComponent::new::<C>(props))
 }
 
-pub struct TagBuilder<M> {
-    tag: VTag<M>,
+pub struct TagBuilder {
+    tag: VTag,
 }
 
-impl<M> TagBuilder<M> {
+impl TagBuilder {
     pub fn new(tag: Tag) -> Self {
         Self {
             tag: VTag::new(tag),
         }
     }
 
-    pub fn wrap<P: Into<TagBuilder<M>>>(self, parent: P) -> TagBuilder<M> {
+    pub fn wrap<P: Into<TagBuilder>>(self, parent: P) -> TagBuilder {
         parent.into().and(self)
     }
 
@@ -43,6 +41,13 @@ impl<M> TagBuilder<M> {
         self
     }
 
+    pub fn attr_toggle_if(mut self, flag: bool, attribute: Attr) -> Self {
+        if flag {
+            self.tag.attributes.insert(attribute.into(), String::new());
+        }
+        self
+    }
+
     #[inline]
     pub fn class(self, cls: &str) -> Self {
         self.attr(Attr::Class, cls)
@@ -51,6 +56,14 @@ impl<M> TagBuilder<M> {
     #[inline]
     pub fn class_if(self, flag: bool, cls: &str) -> Self {
         if flag {
+            self.attr(Attr::Class, cls)
+        } else {
+            self
+        }
+    }
+
+    pub fn class_opt(self, cls: Option<impl Into<String>>) -> Self {
+        if let Some(cls) = cls {
             self.attr(Attr::Class, cls)
         } else {
             self
@@ -94,14 +107,14 @@ impl<M> TagBuilder<M> {
     }
 
     #[inline]
-    pub fn and(mut self, child: impl DomExtend<M>) -> Self {
+    pub fn and(mut self, child: impl DomExtend) -> Self {
         child.extend(&mut self);
         self
     }
 
     pub fn and_iter<T, I>(mut self, iter: I) -> Self
     where
-        T: DomExtend<M>,
+        T: DomExtend,
         I: IntoIterator<Item = T>,
     {
         for item in iter.into_iter() {
@@ -113,7 +126,7 @@ impl<M> TagBuilder<M> {
 
     pub fn and_if<F, T>(mut self, flag: bool, f: F) -> Self
     where
-        T: DomExtend<M>,
+        T: DomExtend,
         F: FnOnce() -> T,
     {
         if flag {
@@ -125,7 +138,7 @@ impl<M> TagBuilder<M> {
 
     pub fn and_iter_if<T, I, F>(mut self, flag: bool, f: F) -> Self
     where
-        T: DomExtend<M>,
+        T: DomExtend,
         I: IntoIterator<Item = T>,
         F: FnOnce() -> I,
     {
@@ -139,139 +152,118 @@ impl<M> TagBuilder<M> {
         self
     }
 
-    pub fn add_child(&mut self, child: impl Into<VNode<M>>) {
+    pub fn add_child(&mut self, child: impl Into<VNode>) {
         self.tag.children.push(child.into());
     }
 
-    pub fn build(self) -> VNode<M> {
+    pub fn build(self) -> VNode {
         VNode::Tag(self.tag)
     }
 
-    pub fn on(self, event: Event, handler: fn(web_sys::Event) -> Option<M>) -> Self
-    where
-        M: 'static,
-    {
-        // self.tag.listeners.push(Listener {
-        //     event,
-        //     handler: EventHandler::Closure(Rc::new(|ev| handler(ev).map(into_any_box))),
-        //     callback_id: EventCallbackId::new_null(),
-        // });
-
-        self.on_captured(event, handler)
-    }
-
-    pub fn on_captured(
-        mut self,
-        event: Event,
-        handler: impl Fn(web_sys::Event) -> Option<M> + 'static,
-    ) -> Self
-    where
-        M: 'static,
-    {
-        self.tag.listeners.push(Listener {
+    pub fn on(mut self, event: Event, callback: EventCallback) -> Self {
+        self.tag.event_handlers.push(EventHandler {
             event,
-            handler: EventHandler::Closure(Rc::new(move |ev| handler(ev).map(into_any_box))),
+            callback,
             callback_id: EventCallbackId::new_null(),
         });
-
         self
     }
 }
 
-impl<M> From<TagBuilder<M>> for VNode<M> {
-    fn from(b: TagBuilder<M>) -> Self {
+impl From<TagBuilder> for VNode {
+    fn from(b: TagBuilder) -> Self {
         b.build()
     }
 }
 
-pub trait DomExtend<M>: Sized {
-    fn extend(self, parent: &mut TagBuilder<M>);
+pub trait DomExtend: Sized {
+    fn extend(self, parent: &mut TagBuilder);
 }
 
-impl<M> DomExtend<M> for String {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl DomExtend for String {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(text(self))
     }
 }
 
-impl<'a, M> DomExtend<M> for &'a String {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl<'a> DomExtend for &'a String {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(text(self))
     }
 }
 
-impl<'a, M> DomExtend<M> for &'a str {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl<'a> DomExtend for &'a str {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(text(self))
     }
 }
 
-impl<M> DomExtend<M> for TagBuilder<M> {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl DomExtend for TagBuilder {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(self.build())
     }
 }
 
-impl<M> DomExtend<M> for VText {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl DomExtend for VText {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(VNode::Text(self))
     }
 }
 
-impl<M> DomExtend<M> for VNode<M> {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl DomExtend for VNode {
+    fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(self)
     }
 }
 
-impl<M, T: DomExtend<M>> DomExtend<M> for Option<T> {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl<T: DomExtend> DomExtend for Option<T> {
+    fn extend(self, parent: &mut TagBuilder) {
         if let Some(inner) = self {
             inner.extend(parent);
         }
     }
 }
 
-impl<M, T: DomExtend<M>> DomExtend<M> for Vec<T> {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+impl<T: DomExtend> DomExtend for Vec<T> {
+    fn extend(self, parent: &mut TagBuilder) {
         for item in self {
             item.extend(parent);
         }
     }
 }
 
-impl<M, A, B> DomExtend<M> for (A, B)
+impl<A, B> DomExtend for (A, B)
 where
-    A: DomExtend<M>,
-    B: DomExtend<M>,
+    A: DomExtend,
+    B: DomExtend,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         self.0.extend(parent);
         self.1.extend(parent);
     }
 }
 
-impl<M, A, B, C> DomExtend<M> for (A, B, C)
+impl<A, B, C> DomExtend for (A, B, C)
 where
-    A: DomExtend<M>,
-    B: DomExtend<M>,
-    C: DomExtend<M>,
+    A: DomExtend,
+    B: DomExtend,
+    C: DomExtend,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         self.0.extend(parent);
         self.1.extend(parent);
         self.2.extend(parent);
     }
 }
 
-impl<M, A, B, C, D> DomExtend<M> for (A, B, C, D)
+impl<A, B, C, D> DomExtend for (A, B, C, D)
 where
-    A: DomExtend<M>,
-    B: DomExtend<M>,
-    C: DomExtend<M>,
-    D: DomExtend<M>,
+    A: DomExtend,
+    B: DomExtend,
+    C: DomExtend,
+    D: DomExtend,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         self.0.extend(parent);
         self.1.extend(parent);
         self.2.extend(parent);
@@ -279,15 +271,15 @@ where
     }
 }
 
-impl<M, A, B, C, D, E> DomExtend<M> for (A, B, C, D, E)
+impl<A, B, C, D, E> DomExtend for (A, B, C, D, E)
 where
-    A: DomExtend<M>,
-    B: DomExtend<M>,
-    C: DomExtend<M>,
-    D: DomExtend<M>,
-    E: DomExtend<M>,
+    A: DomExtend,
+    B: DomExtend,
+    C: DomExtend,
+    D: DomExtend,
+    E: DomExtend,
 {
-    fn extend(self, parent: &mut TagBuilder<M>) {
+    fn extend(self, parent: &mut TagBuilder) {
         self.0.extend(parent);
         self.1.extend(parent);
         self.2.extend(parent);
@@ -297,191 +289,191 @@ where
 }
 
 #[inline]
-pub fn text<M>(text: impl Into<VText>) -> VNode<M> {
+pub fn text(text: impl Into<VText>) -> VNode {
     VNode::Text(text.into())
 }
 
 #[inline]
-pub fn tag<M>(tag: Tag) -> TagBuilder<M> {
+pub fn tag(tag: Tag) -> TagBuilder {
     TagBuilder::new(tag)
 }
 
 #[inline]
-pub fn tag_with<M>(tag: Tag, child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn tag_with(tag: Tag, child: impl DomExtend) -> TagBuilder {
     self::tag(tag).and(child)
 }
 
 #[inline]
-pub fn div<M>() -> TagBuilder<M> {
+pub fn div() -> TagBuilder {
     TagBuilder::new(Tag::Div)
 }
 
 #[inline]
-pub fn div_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn div_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Div).and(child)
 }
 
 #[inline]
-pub fn img<M>(src: &str) -> TagBuilder<M> {
+pub fn img(src: &str) -> TagBuilder {
     TagBuilder::new(Tag::Img).attr(Attr::Src, src)
 }
 
 #[inline]
-pub fn span<M>() -> TagBuilder<M> {
+pub fn span() -> TagBuilder {
     TagBuilder::new(Tag::Span)
 }
 
 #[inline]
-pub fn span_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn span_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Span).and(child)
 }
 
 #[inline]
-pub fn p<M>() -> TagBuilder<M> {
+pub fn p() -> TagBuilder {
     TagBuilder::new(Tag::P)
 }
 
 #[inline]
-pub fn p_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn p_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::P).and(child)
 }
 
 #[inline]
-pub fn button<M>() -> TagBuilder<M> {
+pub fn button() -> TagBuilder {
     TagBuilder::new(Tag::Button)
 }
 
 #[inline]
-pub fn button_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn button_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Button).and(child)
 }
 
 #[inline]
-pub fn h1<M>() -> TagBuilder<M> {
+pub fn h1() -> TagBuilder {
     TagBuilder::new(Tag::H1)
 }
 
 #[inline]
-pub fn h2<M>() -> TagBuilder<M> {
+pub fn h2() -> TagBuilder {
     TagBuilder::new(Tag::H2)
 }
 
 #[inline]
-pub fn h2_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn h2_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::H2).and(child)
 }
 
 #[inline]
-pub fn h3<M>() -> TagBuilder<M> {
+pub fn h3() -> TagBuilder {
     TagBuilder::new(Tag::H3)
 }
 
 #[inline]
-pub fn h4<M>() -> TagBuilder<M> {
+pub fn h4() -> TagBuilder {
     TagBuilder::new(Tag::H4)
 }
 
-pub fn h5<M>() -> TagBuilder<M> {
+pub fn h5() -> TagBuilder {
     TagBuilder::new(Tag::H5)
 }
 
 #[inline]
-pub fn ul<M>() -> TagBuilder<M> {
+pub fn ul() -> TagBuilder {
     TagBuilder::new(Tag::Ul)
 }
 
 #[inline]
-pub fn li<M>() -> TagBuilder<M> {
+pub fn li() -> TagBuilder {
     TagBuilder::new(Tag::Li)
 }
 
 #[inline]
-pub fn li_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn li_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Li).and(child)
 }
 
 #[inline]
-pub fn small<M>() -> TagBuilder<M> {
+pub fn small() -> TagBuilder {
     TagBuilder::new(Tag::Small)
 }
 
 #[inline]
-pub fn small_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn small_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Small).and(child)
 }
 
 #[inline]
-pub fn strong<M>() -> TagBuilder<M> {
+pub fn strong() -> TagBuilder {
     TagBuilder::new(Tag::Strong)
 }
 
 #[inline]
-pub fn strong_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn strong_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Strong).and(child)
 }
 
 #[inline]
-pub fn table<M>() -> TagBuilder<M> {
+pub fn table() -> TagBuilder {
     TagBuilder::new(Tag::Table)
 }
 
 #[inline]
-pub fn tr<M>() -> TagBuilder<M> {
+pub fn tr() -> TagBuilder {
     TagBuilder::new(Tag::Tr)
 }
 
 #[inline]
-pub fn tr_with<M>(content: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn tr_with(content: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Tr).and(content)
 }
 
-pub fn th<M>() -> TagBuilder<M> {
+pub fn th() -> TagBuilder {
     TagBuilder::new(Tag::Th)
 }
 
 #[inline]
-pub fn td<M>() -> TagBuilder<M> {
+pub fn td() -> TagBuilder {
     TagBuilder::new(Tag::Td)
 }
 
 #[inline]
-pub fn td_with<M>(content: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn td_with(content: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Td).and(content)
 }
 
 #[inline]
-pub fn a<M>() -> TagBuilder<M> {
+pub fn a() -> TagBuilder {
     TagBuilder::new(Tag::A)
 }
 
 #[inline]
-pub fn a_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn a_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::A).and(child)
 }
 
 // Form related.
 
 #[inline]
-pub fn form<M>() -> TagBuilder<M> {
+pub fn form() -> TagBuilder {
     TagBuilder::new(Tag::Form)
 }
 
 #[inline]
-pub fn label<M>() -> TagBuilder<M> {
+pub fn label() -> TagBuilder {
     TagBuilder::new(Tag::Label)
 }
 
 #[inline]
-pub fn label_with<M>(child: impl DomExtend<M>) -> TagBuilder<M> {
+pub fn label_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::Label).and(child)
 }
 
 #[inline]
-pub fn input<M>() -> TagBuilder<M> {
+pub fn input() -> TagBuilder {
     TagBuilder::new(Tag::Input)
 }
 
 #[inline]
-pub fn textarea<M>() -> TagBuilder<M> {
+pub fn textarea() -> TagBuilder {
     TagBuilder::new(Tag::TextArea)
 }

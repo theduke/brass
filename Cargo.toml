@@ -1,5 +1,5 @@
 [package]
-name = "copper"
+name = "brass"
 version = "0.1.0"
 authors = ["Christoph Herzog <chris@theduke.at>"]
 edition = "2018"
@@ -33,7 +33,7 @@ features = [
 
 [workspace]
 members = [
-    "copper_bulma",
+    "brass_bulma",
 
     "xtask",
     "examples/todo"

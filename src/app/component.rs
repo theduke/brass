@@ -1,4 +1,10 @@
-use crate::{vdom::render::RenderContext, AnyBox, VNode};
+use std::rc::Rc;
+
+use crate::{
+    any::{any_box, AnyBox},
+    vdom::render::DomRenderContext,
+    VNode,
+};
 
 use super::{
     component_manager::ComponentId, context::Context, effect::EffectGuard, state::AppState,
@@ -6,13 +12,72 @@ use super::{
 
 pub type ShouldRender = bool;
 
+pub struct RenderContext<C> {
+    _marker: std::marker::PhantomData<C>,
+}
+
+impl<C: Component> RenderContext<C> {
+    pub fn new() -> Self {
+        Self {
+            _marker: std::marker::PhantomData,
+        }
+    }
+
+    pub fn callback<E, F>(&self, handler: F) -> crate::vdom::EventCallback
+    where
+        E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
+        F: Fn(E) -> C::Msg + 'static,
+    {
+        crate::vdom::EventCallback::Closure(Rc::new(move |ev: web_sys::Event| {
+            // TODO This expect can basically never happen due to the trait bound on E.
+            // We could use JsCast::unchecked_into instead.
+            // Keep this now just to be safe.
+            match wasm_bindgen::JsCast::dyn_into(ev) {
+                Ok(ev) => {
+                    let msg = handler(ev);
+                    Some(any_box(msg))
+                }
+                Err(err) => {
+                    tracing::error!(?err, "Event callback received invalid event type");
+                    None
+                }
+            }
+        }))
+    }
+
+    pub fn callback_opt<E, F>(&self, handler: F) -> crate::vdom::EventCallback
+    where
+        E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
+        F: (Fn(E) -> Option<C::Msg>) + 'static,
+    {
+        crate::vdom::EventCallback::Closure(Rc::new(move |ev: web_sys::Event| {
+            // TODO This expect can basically never happen due to the trait bound on E.
+            // We could use JsCast::unchecked_into instead.
+            // Keep this now just to be safe.
+            match wasm_bindgen::JsCast::dyn_into(ev) {
+                Ok(ev) => {
+                    if let Some(msg) = handler(ev) {
+                        Some(any_box(msg))
+                    } else {
+                        None
+                    }
+                }
+                Err(err) => {
+                    tracing::error!(?err, "Event callback received invalid event type");
+                    None
+                }
+            }
+        }))
+    }
+}
+
 pub trait Component: Sized + 'static {
     type Properties;
     type Msg: 'static;
 
     fn init(props: Self::Properties, ctx: &mut Context<Self::Msg>) -> Self;
     fn update(&mut self, msg: Self::Msg, ctx: &mut Context<Self::Msg>);
-    fn render(&self) -> VNode<Self::Msg>;
+    fn render(&self, ctx: RenderContext<Self>) -> VNode;
 
     fn on_property_change(
         &mut self,
@@ -31,8 +96,8 @@ pub trait Component: Sized + 'static {
     fn on_unmount(&mut self) {}
 
     /// Construct a new VNode during rendering.
-    fn build<M>(props: Self::Properties) -> VNode<M> {
-        crate::vdom::component::<Self, M>(props)
+    fn build(props: Self::Properties) -> VNode {
+        crate::vdom::component::<Self>(props)
     }
 }
 
@@ -97,9 +162,10 @@ impl<C: Component> DynamicComponent for C {
             let c = C::init(real_props, &mut context);
             (c, context.take_effects())
         };
-        let mut vnode = component.render();
+        let ctx = RenderContext::new();
+        let mut vnode = component.render(ctx);
 
-        let mut render_ctx = RenderContext::<C>::new(app, id);
+        let mut render_ctx = DomRenderContext::<C>::new(app, id);
         let node = render_ctx.patch(&parent, next_sibling.as_ref(), VNode::Empty, &mut vnode);
 
         // Call Component::on_render hook.
@@ -109,7 +175,7 @@ impl<C: Component> DynamicComponent for C {
             component: Box::new(component),
             state: ComponentState {
                 id,
-                last_vnode: vnode.into_any(),
+                last_vnode: vnode,
                 parent,
                 next_sibling,
                 node,
@@ -123,12 +189,13 @@ impl<C: Component> DynamicComponent for C {
         app: &mut AppState,
         state: &mut ComponentState,
     ) -> Option<web_sys::Node> {
-        let mut vnode = self.render();
-        let last_vnode = state.take_last_vnode().into_typed();
+        let ctx = RenderContext::new();
+        let mut vnode = self.render(ctx);
+        let last_vnode = state.take_last_vnode();
 
         // trace!(?state, "dyn_render component {}", self.name());
 
-        let mut render_ctx = RenderContext::<C>::new(app, state.id());
+        let mut render_ctx = DomRenderContext::<C>::new(app, state.id());
         let node = render_ctx.patch(
             &state.parent,
             state.next_sibling.as_ref(),
@@ -137,7 +204,7 @@ impl<C: Component> DynamicComponent for C {
         );
 
         // TODO: remove mapping
-        state.last_vnode = vnode.into_any();
+        state.last_vnode = vnode;
         state.node = node.clone();
 
         node
@@ -213,7 +280,7 @@ impl ComponentConstructor {
 pub(crate) struct ComponentState {
     id: ComponentId,
     /// VNode from the previous render.
-    last_vnode: VNode<AnyBox>,
+    last_vnode: VNode,
     /// Parent dom element.
     parent: web_sys::Element,
     /// Next sibling. Needed for dom patching.
@@ -229,7 +296,7 @@ pub(crate) struct ComponentState {
 
 impl ComponentState {
     #[inline]
-    pub fn take_last_vnode(&mut self) -> VNode<AnyBox> {
+    pub fn take_last_vnode(&mut self) -> VNode {
         std::mem::take(&mut self.last_vnode)
     }
 

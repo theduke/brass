@@ -1,6 +1,6 @@
 use std::{cell::Cell, pin::Pin, rc::Rc};
 
-use crate::AnyBox;
+use crate::any::AnyBox;
 
 use super::handle::ComponentAppHandle;
 

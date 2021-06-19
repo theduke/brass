@@ -1,7 +1,8 @@
+use brass::RenderContext;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
-use copper::{
+use brass::{
     dom::{Attr, Event},
     vdom::{button, component, div, div_with, h2, h4, input, li, span_with, text, ul},
     Component, Context, ShouldRender,
@@ -39,14 +40,16 @@ impl Component for Counter {
         self.count += msg;
     }
 
-    fn render(&self) -> copper::VNode<Self::Msg> {
-        let increment = button().and("+").on(Event::Click, |_| Some(1));
+    fn render(&self, ctx: RenderContext<Self>) -> brass::VNode {
+        let increment = button()
+            .and("+")
+            .on(Event::Click, ctx.callback(|_ev: web_sys::Event| 1));
         div()
             .and("Counter: ")
             .and(self.count.to_string())
             .and(div_with(increment))
             .and_if(self.nest, || {
-                div_with(component::<Counter, _>(false)).attr(Attr::Style, "padding-left: 2rem;")
+                div_with(component::<Counter>(false)).attr(Attr::Style, "padding-left: 2rem;")
             })
             .build()
     }
@@ -72,7 +75,7 @@ enum Msg {
     // Remove(TodoId),
 }
 
-impl copper::Component for App {
+impl brass::Component for App {
     type Properties = ();
     type Msg = Msg;
 
@@ -114,24 +117,30 @@ impl copper::Component for App {
         }
     }
 
-    fn render(&self) -> copper::VNode<Self::Msg> {
+    fn render(&self, ctx: RenderContext<Self>) -> brass::VNode {
         let editor = div().and(text("New Todo2: ")).and(
             input()
                 .attr(Attr::Value, &self.new_todo)
-                .on(Event::Input, |ev| {
-                    let elem: web_sys::HtmlInputElement =
-                        ev.current_target().unwrap().unchecked_into();
-                    let value = elem.value();
-                    Some(Msg::Change(value))
-                })
-                .on(Event::KeyDown, |ev| {
-                    let kev: web_sys::KeyboardEvent = ev.unchecked_into();
-                    if kev.code() == "Enter" {
-                        Some(Msg::Add)
-                    } else {
-                        None
-                    }
-                }),
+                .on(
+                    Event::Input,
+                    ctx.callback(|ev: web_sys::Event| {
+                        let elem: web_sys::HtmlInputElement =
+                            ev.current_target().unwrap().unchecked_into();
+                        let value = elem.value();
+                        Msg::Change(value)
+                    }),
+                )
+                .on(
+                    Event::KeyDown,
+                    ctx.callback_opt(|ev: web_sys::Event| {
+                        let kev: web_sys::KeyboardEvent = ev.unchecked_into();
+                        if kev.code() == "Enter" {
+                            Some(Msg::Add)
+                        } else {
+                            None
+                        }
+                    }),
+                ),
         );
 
         let mut todos = div().and(h4().and("Your Todos:"));
@@ -148,7 +157,10 @@ impl copper::Component for App {
                 let checkbox = input()
                     .attr(Attr::Type, "checkbox")
                     .attr(Attr::Checked, checked)
-                    .on_captured(Event::Click, move |_ev| Some(Msg::ToggleDone(id)));
+                    .on(
+                        Event::Click,
+                        ctx.callback(move |_ev: web_sys::Event| Msg::ToggleDone(id)),
+                    );
 
                 let label = if todo.done {
                     span_with(&todo.task).attr(Attr::Style, "text-decoration: line-through;")
@@ -197,9 +209,9 @@ pub fn boot() {
     std::panic::set_hook(Box::new(console_error_panic_hook::hook));
 
     tracing::info!("tracing initialized");
-    let elem = copper::query_selector("#app")
+    let elem = brass::util::query_selector("#app")
         .expect("Could not get app")
         .dyn_into()
         .unwrap();
-    copper::boot::<App>((), elem);
+    brass::boot::<App>((), elem);
 }

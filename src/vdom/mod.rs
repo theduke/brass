@@ -3,11 +3,12 @@ pub mod render;
 mod builder;
 pub use builder::*;
 
-use std::{collections::HashMap, marker::PhantomData, rc::Rc};
+use std::{collections::HashMap, rc::Rc};
 
 use crate::{
+    any::AnyBox,
     app::{ComponentConstructor, ComponentId, EventCallbackId},
-    dom, AnyBox, Component,
+    dom, Component,
 };
 
 /// Wrapper around a [`web_sys::Node`].
@@ -122,79 +123,83 @@ pub type StaticEventHandler = fn(web_sys::Event) -> Option<AnyBox>;
 pub type ClosureEventHandler = Rc<dyn Fn(web_sys::Event) -> Option<AnyBox>>;
 
 #[derive(Clone)]
-pub enum EventHandler {
+pub enum EventCallback {
     Fn(StaticEventHandler),
     Closure(ClosureEventHandler),
 }
 
-impl EventHandler {
+impl std::fmt::Debug for EventCallback {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "EventCallback")
+    }
+}
+
+impl EventCallback {
     pub fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
         match self {
-            EventHandler::Fn(f) => f(event),
-            EventHandler::Closure(f) => (f)(event),
+            EventCallback::Fn(f) => f(event),
+            EventCallback::Closure(f) => (f)(event),
         }
     }
 }
 
-impl PartialEq for EventHandler {
+impl PartialEq for EventCallback {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (EventHandler::Fn(f1), EventHandler::Fn(f2)) => f1 == f2,
+            (EventCallback::Fn(f1), EventCallback::Fn(f2)) => f1 == f2,
             _ => false,
         }
     }
 }
 
-struct Listener {
+#[derive(Debug)]
+struct EventHandler {
     event: dom::Event,
-    handler: EventHandler,
+    callback: EventCallback,
     callback_id: EventCallbackId,
 }
 
-impl PartialEq for Listener {
+// impl EventHandler {
+//     pub(crate) fn new(event: dom::Event, handler: EventCallback) -> Self {
+//         Self {
+//             event,
+//             callback: handler,
+//             callback_id: EventCallbackId::new_null(),
+//         }
+//     }
+// }
+
+impl PartialEq for EventHandler {
     fn eq(&self, other: &Self) -> bool {
-        self.event == other.event && self.handler == other.handler
+        self.event == other.event && self.callback == other.callback
     }
 }
 
-pub struct VTag<M> {
+#[derive(Debug)]
+pub struct VTag {
     tag: dom::Tag,
     // TODO: use a faster hash map and a better key.
     attributes: HashMap<dom::Attr, String>,
-    children: Vec<VNode<M>>,
+    children: Vec<VNode>,
 
     // TODO: should this be a u32 or a Rc<String> ?
     // TODO: implement keying support for the rendering
     key: Option<String>,
-    listeners: Vec<Listener>,
+    event_handlers: Vec<EventHandler>,
 
     element: OptionalElement,
-    _marker: PhantomData<M>,
 }
 
-impl<M> VTag<M> {
+impl VTag {
     pub fn new(tag: dom::Tag) -> Self {
         Self {
             tag,
             attributes: HashMap::new(),
             children: Vec::new(),
             key: None,
-            listeners: Vec::new(),
+            event_handlers: Vec::new(),
             element: OptionalElement::new_none(),
-            _marker: PhantomData,
         }
-    }
-}
-
-impl<M> std::fmt::Debug for VTag<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Tag")
-            .field("kind", &self.tag)
-            .field("attributes", &self.attributes)
-            .field("key", &self.key)
-            // .field("listeners", &self.listeners)
-            .field("node", &self.element)
-            .finish()
     }
 }
 
@@ -245,52 +250,16 @@ impl VComponent {
     }
 }
 
-pub enum VNode<M> {
+#[derive(Debug)]
+pub enum VNode {
     Empty,
     Text(VText),
-    Tag(VTag<M>),
+    Tag(VTag),
     Component(VComponent),
 }
 
-impl<M> Default for VNode<M> {
+impl Default for VNode {
     fn default() -> Self {
         Self::Empty
-    }
-}
-
-impl<M> std::fmt::Debug for VNode<M> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match self {
-            VNode::Empty => {
-                write!(f, "Vnode::Empty")
-            }
-            VNode::Text(t) => {
-                write!(f, "Vnode::Text({:?})", t)
-            }
-            VNode::Tag(t) => {
-                write!(f, "Vnode::Tag({:?})", t)
-            }
-            VNode::Component(t) => {
-                write!(f, "Vnode::Component({:?})", t)
-            }
-        }
-    }
-}
-
-impl<M> VNode<M> {
-    pub fn into_any(self) -> VNode<AnyBox> {
-        // This is safe because the M generic paramenter is only ever used
-        // as a PhantomData marker, so it doesn't have any effects on data
-        // structure layout.
-        unsafe { std::mem::transmute(self) }
-    }
-}
-
-impl VNode<AnyBox> {
-    pub fn into_typed<M>(self) -> VNode<M> {
-        // This is safe because the M generic paramenter is only ever used
-        // as a PhantomData marker, so it doesn't have any effects on data
-        // structure layout.
-        unsafe { std::mem::transmute(self) }
     }
 }

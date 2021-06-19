@@ -2,7 +2,9 @@ use std::{cell::RefCell, rc::Rc};
 
 use wasm_bindgen::{closure::Closure, JsCast};
 
-use crate::now;
+pub fn now() -> f64 {
+    js_sys::Date::now()
+}
 
 pub fn window() -> web_sys::Window {
     // TODO: use OnceCell
@@ -14,34 +16,43 @@ pub fn document() -> web_sys::Document {
     window().document().expect("Could not get document")
 }
 
-// /// A "HashMap" that internally uses a Vec for storage.
-// /// This is a good storage data structure for attribute lists, since it has
-// /// stable ordering and most dom elements have very few attributes.
-// #[derive(Clone, Debug)]
-// pub(crate) struct VecMap<T> {
-//     items: Vec<T>,
-// }
+/// Get the current window URL pathname.
+/// Equivalent to Javascript: `window.location.pathname`;
+pub fn url_path() -> String {
+    window().location().pathname().unwrap()
+}
 
-// impl<T> Default for VecMap<T> {
-//     fn default() -> Self {
-//         Self { items: Vec::new() }
-//     }
-// }
+pub fn input_event_value(ev: web_sys::Event) -> Option<String> {
+    let v = ev
+        .current_target()?
+        .dyn_ref::<web_sys::HtmlInputElement>()?
+        .value();
+    Some(v)
+}
 
-// impl<T> VecMap<T>
-// where
-//     T: Eq + PartialEq,
-// {
-//     pub fn new() -> Self {
-//         Self { items: Vec::new() }
-//     }
+pub fn input_event_checkbox_value(ev: web_sys::Event) -> Option<bool> {
+    ev.current_target()?
+        .dyn_ref::<web_sys::HtmlInputElement>()
+        .map(|x| x.checked())
+}
 
-//     pub fn with_capacity(capacity: usize) -> Self {
-//         Self {
-//             items: Vec::with_capacity(capacity),
-//         }
-//     }
-// }
+pub fn textarea_input_value(ev: web_sys::Event) -> Option<String> {
+    let v = ev
+        .current_target()?
+        .dyn_ref::<web_sys::HtmlTextAreaElement>()?
+        .value();
+    Some(v)
+}
+
+pub fn query_selector(sel: &str) -> Option<web_sys::Node> {
+    web_sys::window()
+        .unwrap()
+        .document()
+        .unwrap()
+        .query_selector(sel)
+        .unwrap_or(None)
+        .map(|x| x.unchecked_into())
+}
 
 /// A timeout future.
 pub(crate) struct Timeout {
@@ -71,7 +82,7 @@ impl std::future::Future for Timeout {
         let s = self.get_mut();
 
         if s.closure.is_none() {
-            let delay = (s.target - super::now()) as i32;
+            let delay = (s.target - now()) as i32;
             if delay < 0 {
                 // Already done.
                 *s.is_complete.borrow_mut() = true;

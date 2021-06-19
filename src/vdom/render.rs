@@ -1,6 +1,6 @@
 use wasm_bindgen::JsCast;
 
-use super::{EventHandler, OptionalElement, OptionalNode, VComponent, VNode, VTag};
+use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VTag};
 use crate::{
     app::{AppState, ComponentEventHandler, ComponentId, EventCallbackId},
     dom, Component,
@@ -28,13 +28,13 @@ fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &str, elem: &web_sy
     }
 }
 
-pub struct RenderContext<'a, C: Component> {
+pub struct DomRenderContext<'a, C: Component> {
     app: &'a mut AppState,
     component_id: ComponentId,
     _marker: std::marker::PhantomData<&'a C>,
 }
 
-impl<'a, C: Component> RenderContext<'a, C> {
+impl<'a, C: Component> DomRenderContext<'a, C> {
     pub(crate) fn new(app: &'a mut AppState, component_id: ComponentId) -> Self {
         Self {
             app,
@@ -54,7 +54,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         self.app.document.create_text_node(text).unchecked_into()
     }
 
-    fn build_listener(&mut self, handler: EventHandler) -> (EventCallbackId, &js_sys::Function) {
+    fn build_listener(&mut self, handler: EventCallback) -> (EventCallbackId, &js_sys::Function) {
         let ev = ComponentEventHandler::new(self.component_id, handler);
         self.app.event_manager.build(ev)
     }
@@ -82,7 +82,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         &mut self,
         parent: &web_sys::Element,
         next_sibling: Option<&web_sys::Node>,
-        tag: &mut VTag<C::Msg>,
+        tag: &mut VTag,
     ) -> web_sys::Element {
         let elem = self.create_element(tag.tag);
 
@@ -97,9 +97,9 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }
 
         // Add listeners.
-        if !tag.listeners.is_empty() {
-            for listener in &mut tag.listeners {
-                let (callback_id, fun) = self.build_listener(listener.handler.clone());
+        if !tag.event_handlers.is_empty() {
+            for listener in &mut tag.event_handlers {
+                let (callback_id, fun) = self.build_listener(listener.callback.clone());
                 listener.callback_id = callback_id;
 
                 elem.add_event_listener_with_callback(listener.event.as_str(), fun)
@@ -127,7 +127,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         &mut self,
         parent: &web_sys::Element,
         next_sibling: Option<&web_sys::Node>,
-        vnode: &mut VNode<C::Msg>,
+        vnode: &mut VNode,
     ) -> Option<web_sys::Node> {
         match vnode {
             VNode::Empty => None,
@@ -151,7 +151,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }
     }
 
-    fn patch_node_tag(&mut self, mut old: VTag<C::Msg>, new: &mut VTag<C::Msg>) {
+    fn patch_node_tag(&mut self, mut old: VTag, new: &mut VTag) {
         let elem = old.element.as_ref();
 
         // Ensure new attributes.
@@ -173,11 +173,11 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }
 
         // Handle listeners.
-        for (index, new_listener) in new.listeners.iter_mut().enumerate() {
-            if let Some(old_listener) = old.listeners.get_mut(index) {
+        for (index, new_listener) in new.event_handlers.iter_mut().enumerate() {
+            if let Some(old_listener) = old.event_handlers.get_mut(index) {
                 // See if we can reuse.
                 if old_listener.event == new_listener.event
-                    && old_listener.handler == new_listener.handler
+                    && old_listener.callback == new_listener.callback
                 {
                     // Can reuse, just reuse the same id.
                     new_listener.callback_id = old_listener.callback_id;
@@ -194,14 +194,18 @@ impl<'a, C: Component> RenderContext<'a, C> {
             }
 
             // Add new listener.
-            let (callback_id, fun) = self.build_listener(new_listener.handler.clone());
+            let (callback_id, fun) = self.build_listener(new_listener.callback.clone());
             new_listener.callback_id = callback_id;
             elem.add_event_listener_with_callback(new_listener.event.as_str(), fun)
                 .ok();
         }
 
         // Remove stale listeners.
-        for listener in old.listeners.get(new.listeners.len()..).unwrap_or_default() {
+        for listener in old
+            .event_handlers
+            .get(new.event_handlers.len()..)
+            .unwrap_or_default()
+        {
             if let Some(fun) = self.get_listener_closure(listener.callback_id) {
                 elem.remove_event_listener_with_callback(listener.event.as_str(), fun)
                     .ok();
@@ -242,7 +246,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         remove_from_dom: bool,
     ) {
         if let Some(mut c) = self.app.component_manager().remove(comp.id) {
-            self.remove_node(c.state_mut().take_last_vnode().into_typed(), parent);
+            self.remove_node(c.state_mut().take_last_vnode(), parent);
             if remove_from_dom {
                 c.remove_from_dom();
             }
@@ -250,7 +254,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
     }
 
     #[inline]
-    fn remove_node(&mut self, node: VNode<C::Msg>, parent: &web_sys::Element) {
+    fn remove_node(&mut self, node: VNode, parent: &web_sys::Element) {
         match node {
             VNode::Empty => {}
             VNode::Text(txt) => {
@@ -264,8 +268,8 @@ impl<'a, C: Component> RenderContext<'a, C> {
     }
 
     #[inline]
-    fn remove_tag(&mut self, tag: VTag<C::Msg>, parent: &web_sys::Element) {
-        for listener in tag.listeners {
+    fn remove_tag(&mut self, tag: VTag, parent: &web_sys::Element) {
+        for listener in tag.event_handlers {
             self.remove_listener(listener.callback_id);
         }
         parent.remove_child(tag.element.as_ref()).ok();
@@ -275,8 +279,8 @@ impl<'a, C: Component> RenderContext<'a, C> {
         &mut self,
         parent: &web_sys::Element,
         next_sibling: Option<&web_sys::Node>,
-        old: VNode<C::Msg>,
-        new: &mut VNode<C::Msg>,
+        old: VNode,
+        new: &mut VNode,
     ) -> Option<web_sys::Node> {
         let x = match new {
             VNode::Empty => {

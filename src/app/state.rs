@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use wasm_bindgen::JsCast;
 
-use crate::{vdom::VComponent, AnyBox, Component};
+use crate::{any::AnyBox, vdom::VComponent, Component};
 
 use super::{
     component::ComponentConstructor,
@@ -102,12 +102,6 @@ impl AppState {
                 .borrow(vcomp.id)
                 .expect("Component has gone away");
 
-            // Transmuting away the lifetime.
-            // This is safe because a single component state is guaranteed to
-            // never be used concurrently.
-            // let unsafe_state: &'static mut InstantiatedComponent =
-            //     unsafe { std::mem::transmute(state) };
-
             let node = comp.remount(
                 self,
                 vcomp.spec.props.take().unwrap_or_else(|| Box::new(())),
@@ -143,12 +137,6 @@ impl AppState {
             .borrow(component_id)
             .expect(&format!("Component disappeared: {:?}", component_id));
 
-        // Transmuting away the lifetime.
-        // This is safe because a single component state is guaranteed to
-        // never be used concurrently.
-        // let unsafe_state: &'static mut InstantiatedComponent =
-        //     unsafe { std::mem::transmute(state) };
-
         let should_render = comp.update(self, msg);
         if should_render {
             self.schedule_render_if_needed(Some(component_id));
@@ -163,12 +151,6 @@ impl AppState {
             .borrow(component_id)
             .expect("Component has disappeared");
 
-        // Transmuting away the lifetime.
-        // This is safe because a single component state is guaranteed to
-        // never be used concurrently.
-        // let unsafe_state: &'static mut InstantiatedComponent =
-        //     unsafe { std::mem::transmute(state) };
-
         comp.render(self);
         finisher.return_component(&mut self.component_manager, comp);
     }
@@ -178,6 +160,7 @@ impl AppState {
         while let Some(id) = self.render_queue.pop() {
             self.render_component(id);
         }
+        self.render_component(ComponentId::ROOT);
     }
 
     pub fn handle_event(

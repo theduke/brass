@@ -1,5 +1,5 @@
 [package]
-name = "copper_todo"
+name = "brass_todo"
 version = "0.1.0"
 authors = ["Christoph Herzog <chris@theduke.at>"]
 edition = "2018"
@@ -9,7 +9,7 @@ crate-type = ["cdylib"]
 
 [dependencies]
 console_error_panic_hook = "0.1.6"
-copper = { path = "../.." }
+brass = { path = "../.." }
 tracing = "0.1.22"
 tracing-wasm = "0.1.0"
 wasm-bindgen = "0.2.69"

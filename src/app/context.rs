@@ -3,8 +3,6 @@ use std::marker::PhantomData;
 use futures::{FutureExt, StreamExt};
 use wasm_bindgen_futures::spawn_local;
 
-use crate::into_any_box;
-
 use super::{
     component_manager::ComponentId,
     effect::{Callback, EffectFuture, EffectGuard},
@@ -46,7 +44,11 @@ impl<'a, M> Context<'a, M> {
 
     // Context related.
 
-    pub fn register<T: 'static>(&mut self, value: T) {
+    /// Provide a dynamic value to all child components.
+    /// Can be retrieved with [Self::get].
+    /// Calling this method with a value of the same type will overwrite the
+    /// previous value.
+    pub fn provide<T: 'static>(&mut self, value: T) {
         self.app.context.register(value);
     }
 
@@ -67,7 +69,7 @@ impl<'a, M> Context<'a, M> {
         F: std::future::Future<Output = Option<M>> + 'static,
     {
         let handle = self.app.make_component_handle(self.component_id);
-        let mapped = f.map(|x| x.map(into_any_box));
+        let mapped = f.map(|x| x.map(crate::any::any_box));
 
         let (guarded, guard) = EffectFuture::new(handle, Box::pin(mapped));
 
