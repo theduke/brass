@@ -27,7 +27,7 @@ impl ContextContainer {
         self.values.insert(id, Box::new(value));
     }
 
-    pub fn get<T: 'static>(&mut self) -> Option<&T> {
+    pub fn get<T: 'static>(&self) -> Option<&T> {
         let id = std::any::TypeId::of::<T>();
         let value = self.values.get(&id)?;
         value.downcast_ref()

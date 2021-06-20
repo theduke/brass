@@ -52,7 +52,9 @@ impl<'a, M> Context<'a, M> {
         self.app.context.register(value);
     }
 
-    pub fn get<T: 'static>(&mut self) -> Option<&T> {
+    /// Get a typed value from the global context.
+    /// Values must have been registered with [Self::provide].
+    pub fn get<T: 'static>(&self) -> Option<&T> {
         self.app.context.get::<T>()
     }
 

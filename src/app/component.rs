@@ -12,15 +12,23 @@ use super::{
 
 pub type ShouldRender = bool;
 
-pub struct RenderContext<C> {
+pub struct RenderContext<'a, C: Component> {
     _marker: std::marker::PhantomData<C>,
+    context: Context<'a, C::Msg>,
 }
 
-impl<C: Component> RenderContext<C> {
-    pub fn new() -> Self {
+impl<'a, C: Component> RenderContext<'a, C> {
+    pub fn new(context: Context<'a, C::Msg>) -> Self {
         Self {
+            context,
             _marker: std::marker::PhantomData,
         }
+    }
+
+    /// Get a typed value from the global context.
+    /// Values must have been registered with [Self::provide].
+    pub fn get<T: 'static>(&self) -> Option<&T> {
+        self.context.get::<T>()
     }
 
     pub fn callback<E, F>(&self, handler: F) -> crate::vdom::EventCallback
@@ -157,12 +165,12 @@ impl<C: Component> DynamicComponent for C {
             .downcast::<C::Properties>()
             .expect("Invalid property type");
 
+        let mut context = Context::new(app, id);
         let (mut component, effect_guards) = {
-            let mut context = Context::new(app, id);
             let c = C::init(real_props, &mut context);
             (c, context.take_effects())
         };
-        let ctx = RenderContext::new();
+        let ctx = RenderContext::new(context);
         let mut vnode = component.render(ctx);
 
         let mut render_ctx = DomRenderContext::<C>::new(app, id);
@@ -189,8 +197,9 @@ impl<C: Component> DynamicComponent for C {
         app: &mut AppState,
         state: &mut ComponentState,
     ) -> Option<web_sys::Node> {
-        let ctx = RenderContext::new();
-        let mut vnode = self.render(ctx);
+        let context = Context::new(app, state.id);
+        let render_context = RenderContext::new(context);
+        let mut vnode = self.render(render_context);
         let last_vnode = state.take_last_vnode();
 
         // trace!(?state, "dyn_render component {}", self.name());
