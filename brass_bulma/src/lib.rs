@@ -146,6 +146,19 @@ pub fn menu_list() -> TagBuilder {
     vdom::ul().class("menu-list")
 }
 
+pub fn notification(color: Color, content: impl DomExtend) -> TagBuilder {
+    vdom::p_with(content).class(&format!("notification {}", color.as_class()))
+}
+
+pub fn notification_success(content: impl DomExtend) -> TagBuilder {
+    notification(Color::Success, content)
+}
+
+#[inline]
+pub fn table() -> TagBuilder {
+    vdom::table().class("table")
+}
+
 pub fn icon_fa(icon: &str) -> TagBuilder {
     span()
         .class("icon")
