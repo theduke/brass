@@ -21,6 +21,10 @@ impl TagBuilder {
         }
     }
 
+    pub fn new_tag(tag: VTag) -> Self {
+        Self { tag }
+    }
+
     pub fn wrap<P: Into<TagBuilder>>(self, parent: P) -> TagBuilder {
         parent.into().and(self)
     }
@@ -38,6 +42,11 @@ impl TagBuilder {
         if flag {
             self.tag.attributes.insert(attribute.into(), value.into());
         }
+        self
+    }
+
+    pub fn attr_toggle(mut self, attribute: Attr) -> Self {
+        self.tag.attributes.insert(attribute.into(), String::new());
         self
     }
 
@@ -349,6 +358,11 @@ pub fn button_with(child: impl DomExtend) -> TagBuilder {
 }
 
 #[inline]
+pub fn hr() -> TagBuilder {
+    TagBuilder::new(Tag::Hr)
+}
+
+#[inline]
 pub fn h1() -> TagBuilder {
     TagBuilder::new(Tag::H1)
 }
@@ -429,6 +443,11 @@ pub fn tr_with(content: impl DomExtend) -> TagBuilder {
 
 pub fn th() -> TagBuilder {
     TagBuilder::new(Tag::Th)
+}
+
+#[inline]
+pub fn th_with(content: impl DomExtend) -> TagBuilder {
+    TagBuilder::new(Tag::Th).and(content)
 }
 
 #[inline]
