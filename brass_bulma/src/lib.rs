@@ -154,6 +154,14 @@ pub fn notification_success(content: impl DomExtend) -> TagBuilder {
     notification(Color::Success, content)
 }
 
+pub fn notification_warning(content: impl DomExtend) -> TagBuilder {
+    notification(Color::Warning, content)
+}
+
+pub fn notification_error(content: impl DomExtend) -> TagBuilder {
+    notification(Color::Danger, content)
+}
+
 #[inline]
 pub fn table() -> TagBuilder {
     vdom::table().class("table")
@@ -276,6 +284,29 @@ impl DomExtend for Input {
     fn extend(self, parent: &mut TagBuilder) {
         let mut inp = input()
             .and_class(self.color.as_class())
+            .attr(Attr::Value, self.value)
+            .on(Event::Input, self.on_input);
+
+        if let Some(placeholder) = self.placeholder {
+            inp.add_attr(Attr::Placeholder, placeholder);
+        }
+
+        parent.add_child(inp);
+    }
+}
+
+pub struct Textarea {
+    pub color: Color,
+    pub placeholder: Option<String>,
+    pub value: String,
+    pub on_input: EventCallback,
+}
+
+impl DomExtend for Textarea {
+    fn extend(self, parent: &mut TagBuilder) {
+        let mut inp = tag(Tag::TextArea)
+            .and_class(self.color.as_class())
+            .and_class("textarea")
             .attr(Attr::Value, self.value)
             .on(Event::Input, self.on_input);
 
