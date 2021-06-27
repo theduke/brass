@@ -121,6 +121,14 @@ impl TagBuilder {
         self
     }
 
+    #[inline]
+    pub fn and_opt(mut self, child: Option<impl DomExtend>) -> Self {
+        if let Some(child) = child {
+            child.extend(&mut self);
+        }
+        self
+    }
+
     pub fn and_iter<T, I>(mut self, iter: I) -> Self
     where
         T: DomExtend,
