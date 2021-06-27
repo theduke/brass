@@ -77,6 +77,15 @@ impl<'a, C: Component> RenderContext<'a, C> {
             }
         }))
     }
+
+    pub fn callback_ignore_event<F>(&self, handler: F) -> crate::vdom::EventCallback
+    where
+        F: Fn() -> C::Msg + 'static,
+    {
+        crate::vdom::EventCallback::Closure(Rc::new(move |_ev: web_sys::Event| {
+            Some(any_box(handler()))
+        }))
+    }
 }
 
 pub trait Component: Sized + 'static {
