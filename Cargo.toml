@@ -36,7 +36,8 @@ members = [
     "brass_bulma",
 
     "xtask",
-    "examples/todo"
+    "examples/todo",
+    "bench",
 ]
 
 [dev-dependencies]
