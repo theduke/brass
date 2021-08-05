@@ -12,6 +12,20 @@ pub use app::{boot, Callback, Component, Context, EffectGuard, RenderContext, Sh
 
 pub use vdom::VNode;
 
+/// Enable the properties of a Component to be used when building the virtual
+/// dom.
+///
+/// ```rust
+/// struct Props {}
+/// struct MyComponent {}
+///
+/// impl brass::Component for MyComponent {
+///     ...
+/// }
+///
+/// enable_props!(Props => MyComponent)
+///
+/// ```
 #[macro_export]
 macro_rules! enable_props {
     ($prop:ty => $comp:ty) => {
