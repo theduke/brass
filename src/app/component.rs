@@ -182,6 +182,7 @@ impl<C: Component> DynamicComponent for C {
         let ctx = RenderContext::new(context);
         let mut vnode = component.render(ctx);
 
+        // TODO: re-use code in self.dyn_render() to prevent duplication.
         let mut render_ctx = DomRenderContext::<C>::new(app, id);
         let node = render_ctx.patch(&parent, next_sibling.as_ref(), VNode::Empty, &mut vnode);
 
@@ -221,7 +222,9 @@ impl<C: Component> DynamicComponent for C {
             &mut vnode,
         );
 
-        // TODO: remove mapping
+        // Call Component::on_render hook.
+        self.on_render(false);
+
         state.last_vnode = vnode;
         state.node = node.clone();
 
