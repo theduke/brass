@@ -1,6 +1,10 @@
 pub use bumpalo::collections::{String as BumpString, Vec as BumpVec};
 use bumpalo::Bump;
 
+/// A simple bump allocated map based on bumpalo::Vec.
+///
+/// Retrieving a key requires iterating the map, so this is only suitable for 
+/// maps with a small amount of keys, or if direct key access is rare.
 #[derive(Debug)]
 pub struct BumpMap<'bump, K, V> {
     items: BumpVec<'bump, (K, V)>,
