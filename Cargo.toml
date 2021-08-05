@@ -38,3 +38,7 @@ members = [
     "xtask",
     "examples/todo"
 ]
+
+[dev-dependencies]
+tracing-wasm = "0.2.0"
+wasm-bindgen-test = "0.3.25"

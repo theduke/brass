@@ -1,5 +1,3 @@
-use core::panic;
-
 use wasm_bindgen::JsCast;
 
 use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VRef, VTag};
