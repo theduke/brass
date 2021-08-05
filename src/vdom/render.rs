@@ -1,6 +1,8 @@
+use core::panic;
+
 use wasm_bindgen::JsCast;
 
-use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VTag};
+use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VRef, VTag};
 use crate::{
     app::{AppState, ComponentEventHandler, ComponentId, EventCallbackId},
     dom, Component,
@@ -114,6 +116,17 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
         elem
     }
 
+    fn render_ref(
+        &mut self,
+        parent: &web_sys::Element,
+        next_sibling: Option<&web_sys::Node>,
+        vref: &mut VRef,
+    ) -> web_sys::Element {
+        let elem = self.render_tag(parent, next_sibling, &mut vref.tag);
+        vref.data.set(elem.clone());
+        elem
+    }
+
     // #[inline]
     // fn render_component<C: Component>(
     //     ctx: &mut AppState<C>,
@@ -139,6 +152,7 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
                 Some(node)
             }
             VNode::Tag(tag) => Some(self.render_tag(parent, next_sibling, tag).unchecked_into()),
+            VNode::Ref(vref) => Some(self.render_ref(parent, next_sibling, vref).unchecked_into()),
             VNode::Component(comp) => {
                 let node = self.mount_component(comp, parent, next_sibling.clone());
                 if let Some(node) = node {
@@ -263,6 +277,10 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
             VNode::Tag(tag) => {
                 self.remove_tag(tag, parent);
             }
+            VNode::Ref(vref) => {
+                vref.clear_ref();
+                self.remove_tag(vref.tag, parent);
+            }
             VNode::Component(c) => self.remove_component(c, parent, false),
         }
     }
@@ -273,6 +291,32 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
             self.remove_listener(listener.callback_id);
         }
         parent.remove_child(tag.element.as_ref()).ok();
+    }
+
+    fn patch_tag(
+        &mut self,
+        parent: &web_sys::Element,
+        next_sibling: Option<&web_sys::Node>,
+        old: VNode,
+        new_tag: &mut VTag,
+    ) -> web_sys::Node {
+        if let VNode::Tag(old_tag) = old {
+            if old_tag.tag == new_tag.tag {
+                // Same tag, so we can patch
+                self.patch_node_tag(old_tag, new_tag);
+                let elem = new_tag.element.as_ref();
+                let node: &web_sys::Node = elem.as_ref();
+                node.clone()
+            } else {
+                self.remove_tag(old_tag, parent);
+                // Must create a new tag.
+                self.render_tag(parent, next_sibling, new_tag).into()
+            }
+        } else {
+            self.remove_node(old, parent);
+            // Must create a new tag.
+            self.render_tag(parent, next_sibling, new_tag).into()
+        }
     }
 
     pub fn patch(
@@ -306,23 +350,22 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
                     Some(text_node)
                 }
             }
-            VNode::Tag(new_tag) => {
-                if let VNode::Tag(old_tag) = old {
-                    if old_tag.tag == new_tag.tag {
-                        // Same tag, so we can patch
-                        self.patch_node_tag(old_tag, new_tag);
-                        let elem = new_tag.element.as_ref();
-                        let node: &web_sys::Node = elem.as_ref();
-                        Some(node.clone())
-                    } else {
-                        self.remove_tag(old_tag, parent);
-                        // Must create a new tag.
-                        Some(self.render_tag(parent, next_sibling, new_tag).into())
-                    }
+            VNode::Tag(new_tag) => Some(self.patch_tag(parent, next_sibling, old, new_tag)),
+            VNode::Ref(new_ref) => {
+                if let VNode::Ref(old_ref) = old {
+                    let elem = self.patch_tag(
+                        parent,
+                        next_sibling,
+                        VNode::Tag(old_ref.tag),
+                        &mut new_ref.tag,
+                    );
+                    new_ref.swap_ref(old_ref.data);
+                    new_ref.set(new_ref.tag.element.as_ref().clone());
+                    Some(elem)
                 } else {
-                    self.remove_node(old, parent);
-                    // Must create a new tag.
-                    Some(self.render_tag(parent, next_sibling, new_tag).into())
+                    let elem = self.patch_tag(parent, next_sibling, old, &mut new_ref.tag);
+                    new_ref.data.set(new_ref.tag.element.as_ref().clone());
+                    Some(elem)
                 }
             }
             VNode::Component(new_comp) => {

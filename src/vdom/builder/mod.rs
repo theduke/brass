@@ -4,7 +4,7 @@ use crate::{
     Component,
 };
 
-use super::{EventCallback, EventHandler, VComponent, VNode, VTag, VText};
+use super::{EventCallback, EventHandler, Ref, VComponent, VNode, VRef, VTag, VText};
 
 pub fn component<C: Component>(props: C::Properties) -> VNode {
     VNode::Component(VComponent::new::<C>(props))
@@ -184,6 +184,13 @@ impl TagBuilder {
             callback_id: EventCallbackId::new_null(),
         });
         self
+    }
+
+    pub fn build_ref(self, vref: &Ref) -> VNode {
+        VNode::Ref(VRef {
+            tag: self.tag,
+            data: vref.clone(),
+        })
     }
 }
 

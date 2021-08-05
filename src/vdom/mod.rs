@@ -3,7 +3,7 @@ pub mod render;
 mod builder;
 pub use builder::*;
 
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     any::AnyBox,
@@ -203,13 +203,68 @@ impl VTag {
     }
 }
 
+/// A reference to a DOM element.
+///
+/// Can be used inside of components to get access to the actual dom nodes
+/// in lifecycle hooks.
+#[derive(Clone)]
+pub struct Ref(Rc<RefCell<Option<web_sys::Element>>>);
+
+impl Ref {
+    pub fn new() -> Self {
+        Ref(Rc::new(RefCell::new(None)))
+    }
+
+    pub fn get(&self) -> Option<web_sys::Element> {
+        self.0.try_borrow().ok()?.clone()
+    }
+
+    pub(crate) fn set(&self, elem: web_sys::Element) {
+        self.0.replace(Some(elem));
+    }
+
+    pub(crate) fn take(&self) -> Option<web_sys::Element> {
+        self.0.take()
+    }
+}
+
+/// VDom element that enables getting a [`Ref`] to the [`web_sys::Element`] of
+/// a tag.
+pub struct VRef {
+    pub(crate) tag: VTag,
+    data: Ref,
+}
+
+impl VRef {
+    fn set(&self, elem: web_sys::Element) {
+        self.data.0.replace(Some(elem));
+    }
+
+    fn clear_ref(&self) {
+        self.data.take();
+    }
+
+    fn swap_ref(&mut self, vref: Ref) {
+        self.data = vref;
+    }
+}
+
+impl std::fmt::Debug for VRef {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("VRef")
+            .field("tag", &self.tag)
+            .field("ref", &())
+            .finish()
+    }
+}
+
 pub(crate) struct ComponentSpec {
     pub type_id: std::any::TypeId,
     pub constructor: ComponentConstructor,
-    // TODO: use Option<>  for components without properties to avoid allocations.
     // Properties for the component.
     // Will be used during rendering, so will always be None for previous render
     // vnodes.
+    // TODO: use Option<>  for components without properties to avoid allocations.
     pub props: Option<AnyBox>,
 }
 
@@ -255,7 +310,69 @@ pub enum VNode {
     Empty,
     Text(VText),
     Tag(VTag),
+    Ref(VRef),
     Component(VComponent),
+}
+
+impl VNode {
+    pub fn to_html(&self) -> String {
+        let mut s = String::new();
+        self.append_html(&mut s, 0);
+        s
+    }
+
+    fn append_html(&self, s: &mut String, indent: usize) {
+        match self {
+            VNode::Empty => {}
+            VNode::Text(t) => s.push_str(&t.value),
+            VNode::Tag(tag) => {
+                s.extend(std::iter::repeat(' ').take(indent));
+
+                s.push('<');
+                s.push_str(tag.tag.as_str());
+                for (attr, value) in &tag.attributes {
+                    s.push(' ');
+                    s.push_str(attr.as_str());
+                    s.push('=');
+                    s.push_str(&value);
+                }
+
+                if tag.children.is_empty() {
+                    s.push_str("/>");
+                } else {
+                    s.push('>');
+                    let mut has_newlines = false;
+                    for child in &tag.children {
+                        let need_newline = match child {
+                            VNode::Empty => false,
+                            VNode::Text(_) => false,
+                            VNode::Tag(_) => true,
+                            VNode::Ref(_) => true,
+                            VNode::Component(_) => false,
+                        };
+
+                        let child_indent = if need_newline { indent + 2 } else { 0 };
+                        if need_newline {
+                            has_newlines = true;
+                            s.push('\n');
+                        }
+                        child.append_html(s, child_indent);
+                    }
+                    if has_newlines {
+                        s.extend(std::iter::repeat(' ').take(indent))
+                    }
+                    s.push('<');
+                    s.push('/');
+                    s.push_str(tag.tag.as_str());
+                    s.push('>');
+
+                    s.push('\n');
+                }
+            }
+            VNode::Ref(_) => todo!(),
+            VNode::Component(_) => {}
+        }
+    }
 }
 
 impl Default for VNode {
