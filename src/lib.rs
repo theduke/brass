@@ -29,10 +29,9 @@ pub use vdom::VNode;
 #[macro_export]
 macro_rules! enable_props {
     ($prop:ty => $comp:ty) => {
-        impl brass::vdom::DomExtend for $prop {
-            fn extend(self, parent: &mut brass::vdom::TagBuilder) {
-                let x = <$comp as brass::Component>::build(self);
-                parent.add_child(x);
+        impl brass::vdom::Render for $prop {
+            fn render(self) -> brass::vdom::VNode {
+                <$comp as brass::Component>::build(self)
             }
         }
     };

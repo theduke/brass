@@ -200,37 +200,47 @@ impl From<TagBuilder> for VNode {
     }
 }
 
+pub trait Render {
+    fn render(self) -> VNode;
+}
+
+impl Render for String {
+    fn render(self) -> VNode {
+        text(self)
+    }
+}
+
+impl<'a> Render for &'a String {
+    fn render(self) -> VNode {
+        text(self)
+    }
+}
+
+impl<'a> Render for &'a str {
+    fn render(self) -> VNode {
+        text(self)
+    }
+}
+
+impl Render for TagBuilder {
+    fn render(self) -> VNode {
+        self.build()
+    }
+}
+
+impl Render for VText {
+    fn render(self) -> VNode {
+        VNode::Text(self)
+    }
+}
+
 pub trait DomExtend: Sized {
     fn extend(self, parent: &mut TagBuilder);
 }
 
-impl DomExtend for String {
+impl<R: Render> DomExtend for R {
     fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(text(self))
-    }
-}
-
-impl<'a> DomExtend for &'a String {
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(text(self))
-    }
-}
-
-impl<'a> DomExtend for &'a str {
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(text(self))
-    }
-}
-
-impl DomExtend for TagBuilder {
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(self.build())
-    }
-}
-
-impl DomExtend for VText {
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(VNode::Text(self))
+        parent.add_child(self.render())
     }
 }
 
