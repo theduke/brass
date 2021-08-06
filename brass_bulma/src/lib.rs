@@ -1,3 +1,6 @@
+mod dropdown;
+pub use dropdown::Dropdown;
+
 use brass::{
     dom::{Attr, Event, Tag},
     vdom::{self, div, DomExtend, EventCallback, TagBuilder},
