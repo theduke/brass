@@ -186,6 +186,10 @@ impl TagBuilder {
         self
     }
 
+    pub fn on_click(self, callback: EventCallback) -> Self {
+        self.on(Event::Click, callback)
+    }
+
     pub fn build_ref(self, vref: &Ref) -> VNode {
         VNode::Ref(VRef {
             tag: self.tag,
