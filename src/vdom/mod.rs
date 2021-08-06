@@ -85,7 +85,7 @@ impl OptionalElement {
 }
 
 // TODO: use cow or https://github.com/maciejhirsz/beef ?
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct VText {
     value: String,
     node: OptionalNode,
@@ -152,7 +152,7 @@ impl PartialEq for EventCallback {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 struct EventHandler {
     event: dom::Event,
     callback: EventCallback,

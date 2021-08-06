@@ -269,6 +269,7 @@ impl<C: Component> DynamicComponent for C {
 
 /// A wrapper around a function pointer that constructs a boxed component.
 /// Used in [`VComponent`] for describing the component and by App to create it.
+#[derive(Clone)]
 pub(crate) struct ComponentConstructor(
     fn(
         &mut AppState,
