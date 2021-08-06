@@ -352,7 +352,12 @@ pub fn div_with(child: impl DomExtend) -> TagBuilder {
 }
 
 #[inline]
-pub fn img(src: &str) -> TagBuilder {
+pub fn i() -> TagBuilder {
+    TagBuilder::new(Tag::I)
+}
+
+#[inline]
+pub fn img(src: impl Into<String>) -> TagBuilder {
     TagBuilder::new(Tag::Img).attr(Attr::Src, src)
 }
 
@@ -374,6 +379,11 @@ pub fn p() -> TagBuilder {
 #[inline]
 pub fn p_with(child: impl DomExtend) -> TagBuilder {
     TagBuilder::new(Tag::P).and(child)
+}
+
+#[inline]
+pub fn header() -> TagBuilder {
+    TagBuilder::new(Tag::Header)
 }
 
 #[inline]
