@@ -22,12 +22,14 @@ pub fn url_path() -> String {
     window().location().pathname().unwrap()
 }
 
+pub fn input_event_target(ev: web_sys::Event) -> Option<web_sys::HtmlInputElement> {
+    ev.current_target()?
+        .dyn_into::<web_sys::HtmlInputElement>()
+        .ok()
+}
+
 pub fn input_event_value(ev: web_sys::Event) -> Option<String> {
-    let v = ev
-        .current_target()?
-        .dyn_ref::<web_sys::HtmlInputElement>()?
-        .value();
-    Some(v)
+    input_event_target(ev).map(|x| x.value())
 }
 
 pub fn input_event_checkbox_value(ev: web_sys::Event) -> Option<bool> {
