@@ -110,6 +110,10 @@ pub fn button_large() -> TagBuilder {
     vdom::button().class("button is-large")
 }
 
+pub fn buttons() -> TagBuilder {
+    vdom::div().class("buttons")
+}
+
 pub fn h2() -> TagBuilder {
     vdom::h2().class("title is-2")
 }
@@ -228,6 +232,24 @@ pub fn panel_icon_fa(icon: &str) -> TagBuilder {
         .and(vdom::tag(Tag::I).class(icon))
 }
 
+// Cards.
+
+pub fn card() -> TagBuilder {
+    div().class("card")
+}
+
+pub fn card_header() -> TagBuilder {
+    vdom::header().class("card-header")
+}
+
+pub fn card_header_title(content: impl DomExtend) -> TagBuilder {
+    vdom::p().class("card-header-title").and(content)
+}
+
+pub fn card_content() -> TagBuilder {
+    div().class("card-content")
+}
+
 pub struct Help<T> {
     pub message: T,
     pub color: Color,
@@ -272,6 +294,39 @@ where
     }
 }
 
+pub struct FieldHorizontal<C> {
+    pub label: String,
+    pub help: Option<Help<String>>,
+    pub control: C,
+}
+
+impl<C> FieldHorizontal<C> {
+    pub fn render(self) -> TagBuilder
+    where
+        C: DomExtend,
+    {
+        field().and_class("is-horizontal").and((
+            div()
+                .class("field-label is-normal")
+                .and(label_with(self.label)),
+            div().class("field-body").and(
+                field()
+                    .and(div().class("control").and(self.control))
+                    .and_opt(self.help),
+            ),
+        ))
+    }
+}
+
+impl<C> DomExtend for FieldHorizontal<C>
+where
+    C: DomExtend + 'static,
+{
+    fn extend(self, parent: &mut TagBuilder) {
+        parent.add_child(self.render());
+    }
+}
+
 pub struct Input {
     pub _type: &'static str,
     pub color: Color,
@@ -300,6 +355,7 @@ pub struct Textarea {
     pub placeholder: Option<String>,
     pub value: String,
     pub on_input: EventCallback,
+    pub on_keydown: Option<EventCallback>,
 }
 
 impl DomExtend for Textarea {
@@ -310,11 +366,41 @@ impl DomExtend for Textarea {
             .attr(Attr::Value, self.value)
             .on(Event::Input, self.on_input);
 
+        if let Some(handler) = self.on_keydown {
+            inp = inp.on(Event::KeyDown, handler);
+        }
+
         if let Some(placeholder) = self.placeholder {
             inp.add_attr(Attr::Placeholder, placeholder);
         }
 
         parent.add_child(inp);
+    }
+}
+
+pub struct FileInput {
+    pub label: String,
+    pub multi: bool,
+    pub on_change: EventCallback,
+}
+
+impl DomExtend for FileInput {
+    fn extend(self, parent: &mut TagBuilder) {
+        let input = vdom::input()
+            .class("file-input")
+            .attr(Attr::Type, "file")
+            .attr_toggle_if(self.multi, Attr::Multiple)
+            .on(Event::Change, self.on_change);
+        let cta = vdom::span().class("file-cta").and((
+            vdom::span()
+                .class("file-icon")
+                .and(vdom::i().class("fas fa-upload")),
+            vdom::span().class("file-label").and(self.label),
+        ));
+        let label = vdom::label().class("file-label").and((input, cta));
+        let n = div().class("file").and(label);
+
+        parent.add_child(n);
     }
 }
 
