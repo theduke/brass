@@ -1,9 +1,15 @@
 mod dropdown;
+
+use std::rc::Rc;
+
+use wasm_bindgen::JsCast;
+
 pub use dropdown::Dropdown;
 
 use brass::{
     dom::{Attr, Event, Tag},
-    vdom::{self, div, DomExtend, EventCallback, TagBuilder},
+    vdom::{self, div, DomExtend, EventCallback, Render, TagBuilder},
+    Callback, VNode,
 };
 use vdom::{span, tag};
 
@@ -359,25 +365,74 @@ pub struct Textarea {
     pub value: String,
     pub on_input: EventCallback,
     pub on_keydown: Option<EventCallback>,
+    pub style_raw: Option<String>,
 }
 
-impl DomExtend for Textarea {
-    fn extend(self, parent: &mut TagBuilder) {
-        let mut inp = tag(Tag::TextArea)
+impl Render for Textarea {
+    fn render(self) -> VNode {
+        let mut area = tag(Tag::TextArea)
             .and_class(self.color.as_class())
             .and_class("textarea")
             .attr(Attr::Value, self.value)
             .on(Event::Input, self.on_input);
 
         if let Some(handler) = self.on_keydown {
-            inp = inp.on(Event::KeyDown, handler);
+            area = area.on(Event::KeyDown, handler);
         }
 
         if let Some(placeholder) = self.placeholder {
-            inp.add_attr(Attr::Placeholder, placeholder);
+            area.add_attr(Attr::Placeholder, placeholder);
         }
 
-        parent.add_child(inp);
+        if let Some(style) = self.style_raw {
+            area = area.style_raw(style);
+        }
+
+        area.build()
+    }
+}
+
+pub struct SelectOption<T> {
+    pub value: T,
+    pub label: String,
+}
+
+pub struct Select<T: 'static> {
+    pub value: Option<T>,
+    pub options: Rc<Vec<SelectOption<T>>>,
+    pub on_select: Callback<Option<T>>,
+}
+
+impl<T: PartialEq + Eq + Clone> Render for Select<T> {
+    fn render(self) -> VNode {
+        let options = self.options.iter().enumerate().map(|(index, opt)| {
+            let selected = self.value.as_ref() == Some(&opt.value);
+            vdom::option()
+                .attr(Attr::Value, index.to_string())
+                .attr_toggle_if(selected, Attr::Checked)
+                .and(&opt.label)
+        });
+
+        let opts = self.options.clone();
+        // TODO: this clone is redundant.
+        let callback = self.on_select.clone();
+        let select = vdom::select().and_iter(options).on(
+            Event::Change,
+            EventCallback::closure(move |ev: web_sys::Event| {
+                let index = ev
+                    .target()?
+                    .dyn_ref::<web_sys::HtmlSelectElement>()?
+                    .value()
+                    .parse::<usize>()
+                    .ok()?;
+                let value = opts.get(index)?.value.clone();
+                callback.send(Some(value));
+
+                None
+            }),
+        );
+
+        div().class("select").and(select).build()
     }
 }
 
