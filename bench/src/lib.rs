@@ -51,7 +51,7 @@ impl brass::Component for Root {
                 .and("Add 1 item")
                 .on(
                     Event::Click,
-                    ctx.callback_ignore_event(|| RootMsg::IncrementItemCount(1)),
+                    ctx.on_simple(|| RootMsg::IncrementItemCount(1)),
                 ),
         );
         let add_1000 = div_with(
@@ -60,14 +60,14 @@ impl brass::Component for Root {
                 .and("Add 1000 items")
                 .on(
                     Event::Click,
-                    ctx.callback_ignore_event(|| RootMsg::IncrementItemCount(1000)),
+                    ctx.on_simple(|| RootMsg::IncrementItemCount(1000)),
                 ),
         );
         let clear = div_with(
             button()
                 .and("Clear")
                 .attr(Attr::Id, "clear")
-                .on(Event::Click, ctx.callback_ignore_event(|| RootMsg::Clear)),
+                .on(Event::Click, ctx.on_simple(|| RootMsg::Clear)),
         );
         let controls = div().and((add_1, add_1000, clear));
 
@@ -128,10 +128,7 @@ impl brass::Component for Item {
         let counter = div().class("counter").and((
             span_with(&self.counter.to_string()),
             button()
-                .on(
-                    Event::Click,
-                    ctx.callback_ignore_event(|| ItemMsg::Increment),
-                )
+                .on(Event::Click, ctx.on_simple(|| ItemMsg::Increment))
                 .and("Increment"),
         ));
         div().class("item").and((name, counter)).build()

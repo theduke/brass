@@ -43,7 +43,7 @@ impl Component for Counter {
     fn render(&self, ctx: RenderContext<Self>) -> brass::VNode {
         let increment = button()
             .and("+")
-            .on(Event::Click, ctx.callback(|_ev: web_sys::Event| 1));
+            .on(Event::Click, ctx.on(|_ev: web_sys::Event| 1));
         div()
             .and("Counter: ")
             .and(self.count.to_string())
@@ -123,7 +123,7 @@ impl brass::Component for App {
                 .attr(Attr::Value, &self.new_todo)
                 .on(
                     Event::Input,
-                    ctx.callback(|ev: web_sys::Event| {
+                    ctx.on(|ev: web_sys::Event| {
                         let elem: web_sys::HtmlInputElement =
                             ev.current_target().unwrap().unchecked_into();
                         let value = elem.value();
@@ -132,7 +132,7 @@ impl brass::Component for App {
                 )
                 .on(
                     Event::KeyDown,
-                    ctx.callback_opt(|ev: web_sys::Event| {
+                    ctx.on_opt(|ev: web_sys::Event| {
                         let kev: web_sys::KeyboardEvent = ev.unchecked_into();
                         if kev.code() == "Enter" {
                             Some(Msg::Add)
@@ -159,7 +159,7 @@ impl brass::Component for App {
                     .attr(Attr::Checked, checked)
                     .on(
                         Event::Click,
-                        ctx.callback(move |_ev: web_sys::Event| Msg::ToggleDone(id)),
+                        ctx.on(move |_ev: web_sys::Event| Msg::ToggleDone(id)),
                     );
 
                 let label = if todo.done {
