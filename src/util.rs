@@ -46,14 +46,18 @@ pub fn textarea_input_value(ev: web_sys::Event) -> Option<String> {
     Some(v)
 }
 
-pub fn query_selector(sel: &str) -> Option<web_sys::Node> {
+pub fn query_selector(sel: &str) -> Option<web_sys::Element> {
     web_sys::window()
         .unwrap()
         .document()
         .unwrap()
         .query_selector(sel)
-        .unwrap_or(None)
-        .map(|x| x.unchecked_into())
+        .ok()?
+}
+
+pub fn query_selector_as<T: wasm_bindgen::JsCast>(sel: &str) -> Option<T> {
+    let elem = query_selector(sel)?;
+    elem.dyn_into().ok()
 }
 
 /// A timeout future.
