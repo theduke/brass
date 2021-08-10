@@ -535,3 +535,13 @@ pub fn input() -> TagBuilder {
 pub fn textarea() -> TagBuilder {
     TagBuilder::new(Tag::TextArea)
 }
+
+#[inline]
+pub fn select() -> TagBuilder {
+    TagBuilder::new(Tag::Select)
+}
+
+#[inline]
+pub fn option() -> TagBuilder {
+    TagBuilder::new(Tag::Option)
+}
