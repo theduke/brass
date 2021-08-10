@@ -104,7 +104,7 @@ impl TagBuilder {
     }
 
     #[inline]
-    pub fn style_raw(self, style: &str) -> Self {
+    pub fn style_raw(self, style: impl Into<String>) -> Self {
         self.attr(Attr::Style, style)
     }
 
