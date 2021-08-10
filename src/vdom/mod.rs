@@ -11,6 +11,24 @@ use crate::{
     dom, Component,
 };
 
+/// A render fn that can receives the given data as input and renders to a
+/// virtual DOM node.
+///
+/// This is useful for representing dynamic renderers in applications.
+pub enum Renderer<T> {
+    Static(fn(T) -> VNode),
+    Dyn(Rc<dyn Fn(T) -> VNode>),
+}
+
+impl<T> Renderer<T> {
+    pub fn render(&self, input: T) -> VNode {
+        match self {
+            Renderer::Static(f) => f(input),
+            Renderer::Dyn(f) => (f.as_ref())(input),
+        }
+    }
+}
+
 /// Wrapper around a [`web_sys::Node`].
 /// A fake JsValue (JsValue::UNDEFINED) is used for the empty state.
 /// This reduces branching compared to using an Option<_>.
