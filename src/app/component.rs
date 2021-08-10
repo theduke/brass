@@ -3,7 +3,7 @@ use std::rc::Rc;
 use crate::{
     any::{any_box, AnyBox},
     vdom::render::DomRenderContext,
-    VNode,
+    Callback, VNode,
 };
 
 use super::{
@@ -31,7 +31,27 @@ impl<'a, C: Component> RenderContext<'a, C> {
         self.context.get::<T>()
     }
 
-    pub fn callback<E, F>(&self, handler: F) -> crate::vdom::EventCallback
+    // TODO: should this be here?
+    // Should ideally only be on Context, not used during rendering.
+    pub fn callback(&mut self) -> Callback<C::Msg>
+    where
+        C::Msg: 'static,
+    {
+        self.context.callback()
+    }
+
+    // TODO: should this be here?
+    // Should ideally only be on Context, not used during rendering.
+    pub fn callback_map<T, F>(&mut self, mapper: F) -> Callback<T>
+    where
+        C::Msg: 'static,
+        T: 'static,
+        F: Fn(T) -> C::Msg + 'static,
+    {
+        self.context.callback_map(mapper)
+    }
+
+    pub fn on<E, F>(&self, handler: F) -> crate::vdom::EventCallback
     where
         E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
         F: Fn(E) -> C::Msg + 'static,
@@ -53,7 +73,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }))
     }
 
-    pub fn callback_opt<E, F>(&self, handler: F) -> crate::vdom::EventCallback
+    pub fn on_opt<E, F>(&self, handler: F) -> crate::vdom::EventCallback
     where
         E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
         F: (Fn(E) -> Option<C::Msg>) + 'static,
@@ -78,7 +98,7 @@ impl<'a, C: Component> RenderContext<'a, C> {
         }))
     }
 
-    pub fn callback_ignore_event<F>(&self, handler: F) -> crate::vdom::EventCallback
+    pub fn on_simple<F>(&self, handler: F) -> crate::vdom::EventCallback
     where
         F: Fn() -> C::Msg + 'static,
     {
@@ -237,7 +257,16 @@ impl<C: Component> DynamicComponent for C {
         state: &mut ComponentState,
         msg: AnyBox,
     ) -> ShouldRender {
-        let real_msg = *msg.downcast::<C::Msg>().expect("Invalid message type");
+        let real_msg = match msg.downcast::<C::Msg>() {
+            Ok(msg) => *msg,
+            Err(err) => {
+                panic!(
+                    "Received invalid message type for component {}: {:?}",
+                    std::any::type_name::<Self>(),
+                    err,
+                );
+            }
+        };
 
         let mut context = Context::new(app, state.id());
         self.update(real_msg, &mut context);
