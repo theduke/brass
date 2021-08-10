@@ -58,6 +58,13 @@ impl<'a, M> Context<'a, M> {
         self.app.context.get::<T>()
     }
 
+    /// Remove a typed value from the global context.
+    /// Returns the value if the type was previously set with [`Self::provide`],
+    /// or `None` otherwise.
+    pub fn remove<T: 'static>(&mut self) -> Option<T> {
+        self.app.context.remove::<T>()
+    }
+
     // pub fn navigate(&mut self, route: String) {
     //     match &mut self.state {
     //         ContextState::Direct { effect } => effect.and(Effect::Navigate(route)),

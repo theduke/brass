@@ -32,6 +32,12 @@ impl ContextContainer {
         let value = self.values.get(&id)?;
         value.downcast_ref()
     }
+
+    pub fn remove<T: 'static>(&mut self) -> Option<T> {
+        let id = std::any::TypeId::of::<T>();
+        let value = self.values.remove(&id)?;
+        value.downcast::<T>().ok().map(|x| *x)
+    }
 }
 
 pub(crate) struct AppState {
