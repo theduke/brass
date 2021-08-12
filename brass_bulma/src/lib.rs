@@ -1,6 +1,6 @@
 mod dropdown;
 
-use std::rc::Rc;
+use std::{collections::HashSet, rc::Rc};
 
 use wasm_bindgen::JsCast;
 
@@ -111,6 +111,10 @@ pub fn button() -> TagBuilder {
     vdom::button().class("button")
 }
 
+pub fn button_small() -> TagBuilder {
+    vdom::button().class("button is-small")
+}
+
 pub fn button_medium() -> TagBuilder {
     vdom::button().class("button is-medium")
 }
@@ -180,7 +184,7 @@ pub fn table() -> TagBuilder {
     vdom::table().class("table")
 }
 
-pub fn icon_fa(icon: &str) -> TagBuilder {
+pub fn icon_fa(icon: impl Into<String>) -> TagBuilder {
     span()
         .class("icon")
         .attr(Attr::AriaHidden, "true")
@@ -348,6 +352,7 @@ impl DomExtend for Input {
     fn extend(self, parent: &mut TagBuilder) {
         let mut inp = input()
             .and_class(self.color.as_class())
+            .attr(Attr::Type, self._type)
             .attr(Attr::Value, self.value)
             .on(Event::Input, self.on_input);
 
@@ -392,6 +397,7 @@ impl Render for Textarea {
     }
 }
 
+#[derive(Debug)]
 pub struct SelectOption<T> {
     pub value: T,
     pub label: String,
@@ -418,7 +424,7 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
         let callback = self.on_select.clone();
         let select = vdom::select().and_iter(options).on(
             Event::Change,
-            EventCallback::closure(move |ev: web_sys::Event| {
+            EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
                 let index = ev
                     .target()?
                     .dyn_ref::<web_sys::HtmlSelectElement>()?
@@ -429,10 +435,46 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
                 callback.send(Some(value));
 
                 None
-            }),
+            })),
         );
 
         div().class("select").and(select).build()
+    }
+}
+
+pub struct TagSelect<'a, T: 'static> {
+    pub options: &'a [SelectOption<T>],
+    pub selected: &'a HashSet<T>,
+    pub on_select: Callback<T>,
+}
+
+impl<'a, T: PartialEq + Eq + Clone + std::hash::Hash> Render for TagSelect<'a, T> {
+    fn render(self) -> VNode {
+        let options = self.options.iter().enumerate().map(|(index, opt)| {
+            let selected = self.selected.contains(&opt.value);
+
+            let class = if selected {
+                "tag is-primary is-clickable is-unselectable"
+            } else {
+                "tag is-clickable is-unselectable"
+            };
+
+            // TODO: use a single event handler that reads the index from
+            // a data="" attribute to improve performance.
+            let on_select = self.on_select.clone();
+            let value = opt.value.clone();
+
+            span()
+                .class(class)
+                .attr(Attr::Data, index.to_string())
+                .and(&opt.label)
+                .on_click(EventCallback::Closure(Rc::new(move |_| {
+                    on_select.send(value.clone());
+                    None
+                })))
+        });
+
+        div().class("tags").and_iter(options).build()
     }
 }
 
