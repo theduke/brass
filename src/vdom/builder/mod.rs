@@ -58,7 +58,7 @@ impl TagBuilder {
     }
 
     #[inline]
-    pub fn class(self, cls: &str) -> Self {
+    pub fn class(self, cls: impl Into<String>) -> Self {
         self.attr(Attr::Class, cls)
     }
 
@@ -208,6 +208,19 @@ pub trait Render {
     fn render(self) -> VNode;
 }
 
+pub trait RenderRef {
+    fn render_ref(&self) -> VNode;
+}
+
+impl<'a, T> Render for &'a T
+where
+    T: RenderRef,
+{
+    fn render(self) -> VNode {
+        RenderRef::render_ref(self)
+    }
+}
+
 impl Render for String {
     fn render(self) -> VNode {
         text(self)
@@ -339,6 +352,11 @@ pub fn tag(tag: Tag) -> TagBuilder {
 #[inline]
 pub fn tag_with(tag: Tag, child: impl DomExtend) -> TagBuilder {
     self::tag(tag).and(child)
+}
+
+#[inline]
+pub fn b() -> TagBuilder {
+    TagBuilder::new(Tag::B)
 }
 
 #[inline]

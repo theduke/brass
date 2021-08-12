@@ -296,6 +296,73 @@ impl<C: Component> DynamicComponent for C {
     }
 }
 
+pub trait PropComponent: Sized + 'static {
+    type Properties;
+    type Msg: 'static;
+
+    fn init(props: &Self::Properties, ctx: &mut Context<Self::Msg>) -> Self;
+    fn update(&mut self, msg: Self::Msg, props: &Self::Properties, ctx: &mut Context<Self::Msg>);
+    fn render(&self, props: &Self::Properties, ctx: RenderContext<PropWrapper<Self>>) -> VNode;
+
+    fn on_property_change(
+        &mut self,
+        _old_props: &Self::Properties,
+        _new_props: &Self::Properties,
+        _ctx: &mut Context<Self::Msg>,
+    ) -> ShouldRender {
+        true
+    }
+
+    /// Called immediately after a component has been attached to the DOM.
+    #[allow(unused_variables)]
+    fn on_render(&mut self, first_render: bool) {}
+
+    /// Called before a component is removed from the DOM.
+    ///
+    /// Use this hook to clean up any DOM related state like manually attached
+    /// event listeners.
+    fn on_unmount(&mut self) {}
+
+    /// Construct a new VNode during rendering.
+    fn build(props: Self::Properties) -> VNode {
+        let props: <PropWrapper<Self> as Component>::Properties = props;
+        crate::vdom::component::<PropWrapper<Self>>(props)
+    }
+}
+
+pub struct PropWrapper<C: PropComponent> {
+    props: C::Properties,
+    state: C,
+}
+
+impl<C: PropComponent + 'static> Component for PropWrapper<C> {
+    type Properties = C::Properties;
+    type Msg = C::Msg;
+
+    fn init(props: Self::Properties, ctx: &mut Context<Self::Msg>) -> Self {
+        let state = C::init(&props, ctx);
+        Self { props, state }
+    }
+
+    fn update(&mut self, msg: Self::Msg, ctx: &mut Context<Self::Msg>) {
+        C::update(&mut self.state, msg, &self.props, ctx)
+    }
+
+    fn render(&self, ctx: RenderContext<Self>) -> VNode {
+        C::render(&self.state, &self.props, ctx)
+    }
+
+    fn on_property_change(
+        &mut self,
+        props: Self::Properties,
+        ctx: &mut Context<Self::Msg>,
+    ) -> ShouldRender {
+        let flag = C::on_property_change(&mut self.state, &self.props, &props, ctx);
+        self.props = props;
+        flag
+    }
+}
+
 /// A wrapper around a function pointer that constructs a boxed component.
 /// Used in [`VComponent`] for describing the component and by App to create it.
 #[derive(Clone)]

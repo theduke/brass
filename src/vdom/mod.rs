@@ -8,24 +8,103 @@ use std::{cell::RefCell, collections::HashMap, rc::Rc};
 use crate::{
     any::AnyBox,
     app::{ComponentConstructor, ComponentId, EventCallbackId},
-    dom, Component,
+    dom, Callback, Component,
 };
+
+#[derive(Clone)]
+pub enum Func<I, O> {
+    Static(fn(I) -> O),
+    Dyn(Rc<dyn Fn(I) -> O>),
+}
+
+impl<I, O> Func<I, O> {
+    pub fn dynamic(f: impl Fn(I) -> O + 'static) -> Self {
+        Self::Dyn(Rc::new(f))
+    }
+
+    pub fn call(&self, input: I) -> O {
+        match self {
+            Func::Static(f) => f(input),
+            Func::Dyn(f) => (f.as_ref())(input),
+        }
+    }
+}
 
 /// A render fn that can receives the given data as input and renders to a
 /// virtual DOM node.
 ///
 /// This is useful for representing dynamic renderers in applications.
-pub enum Renderer<T> {
-    Static(fn(T) -> VNode),
-    Dyn(Rc<dyn Fn(T) -> VNode>),
-}
+pub type Renderer<I> = Func<I, VNode>;
 
-impl<T> Renderer<T> {
-    pub fn render(&self, input: T) -> VNode {
+impl<I> Renderer<I> {}
+
+impl<I> Renderer<I> {
+    pub fn render(&self, input: I) -> VNode {
         match self {
             Renderer::Static(f) => f(input),
             Renderer::Dyn(f) => (f.as_ref())(input),
         }
+    }
+}
+
+/// Wrapper for shared data.
+///
+/// The primary purpose is to share immutable data between components via props.
+///
+/// This is just a simple wrapper around [`std::rc::Rc`].
+///
+/// The inner type **MUST NOT contain any INTERIOR MUTABILITY**.
+/// It is not unsafe to have interior mutability, but it may break rendering
+/// logic, since [`Shared`] comparisons only compare the memory location, not
+/// the actual data.
+pub struct Shared<T>(Rc<T>);
+
+impl<T> Clone for Shared<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> From<T> for Shared<T> {
+    fn from(value: T) -> Self {
+        Self::new(value)
+    }
+}
+
+impl<T> Shared<T> {
+    pub fn new(value: T) -> Self {
+        Self(Rc::new(value))
+    }
+}
+
+impl<T> AsRef<T> for Shared<T> {
+    fn as_ref(&self) -> &T {
+        self.0.as_ref()
+    }
+}
+
+impl<T> std::ops::Deref for Shared<T> {
+    type Target = T;
+
+    fn deref(&self) -> &Self::Target {
+        self.0.as_ref()
+    }
+}
+
+impl<T> PartialEq for Shared<T> {
+    fn eq(&self, other: &Self) -> bool {
+        &*self.0 as *const T == &*other.0 as *const T
+    }
+}
+
+impl<T> Eq for Shared<T> {}
+
+impl<T> Render for Shared<T>
+where
+    T: RenderRef,
+{
+    fn render(self) -> VNode {
+        self.0.as_ref().render_ref()
     }
 }
 
@@ -140,6 +219,9 @@ pub type StaticEventHandler = fn(web_sys::Event) -> Option<AnyBox>;
 // TODO: use box instead?
 pub type ClosureEventHandler = Rc<dyn Fn(web_sys::Event) -> Option<AnyBox>>;
 
+// FIXME: make this private with a wrapper struct to prevent mis-use.
+// Right now it's possible to construct an invalid callback that returns the
+// wrong message type for a component, leading to a runtime panic.
 #[derive(Clone)]
 pub enum EventCallback {
     Fn(StaticEventHandler),
@@ -153,7 +235,18 @@ impl std::fmt::Debug for EventCallback {
 }
 
 impl EventCallback {
-    pub fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
+    pub fn callback<F, T>(f: F, callback: Callback<T>) -> Self
+    where
+        F: Fn(web_sys::Event) -> T + 'static,
+    {
+        Self::Closure(Rc::new(move |ev: web_sys::Event| {
+            let value = f(ev);
+            callback.send(value);
+            None
+        }))
+    }
+
+    pub(crate) fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
         match self {
             EventCallback::Fn(f) => f(event),
             EventCallback::Closure(f) => (f)(event),

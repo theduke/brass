@@ -107,10 +107,12 @@ where
     }
 }
 
+type AnyMapper<T> = Rc<dyn Fn(T) -> AnyBox>;
+
 /// A callback that allows sending messages to a component.
 pub struct Callback<M: 'static> {
     handle: ComponentAppHandle,
-    mapper: Option<Rc<dyn Fn(M) -> AnyBox>>,
+    mapper: Option<AnyMapper<M>>,
 }
 
 impl<M: 'static> Clone for Callback<M> {
@@ -139,9 +141,17 @@ impl<M: 'static> Callback<M> {
     }
 
     pub fn map<T: 'static, F: Fn(T) -> M + 'static>(self, mapper: F) -> Callback<T> {
+        let nested_mapper = match self.mapper {
+            Some(old_mapper) => Rc::new(move |value: T| -> AnyBox {
+                let first_mapped = mapper(value);
+                old_mapper(first_mapped)
+            }) as AnyMapper<T>,
+            None => Rc::new(move |value: T| -> AnyBox { Box::new(mapper(value)) }),
+        };
+
         Callback {
             handle: self.handle.clone(),
-            mapper: Some(Rc::new(move |value| Box::new(mapper(value)))),
+            mapper: Some(nested_mapper),
         }
     }
 }

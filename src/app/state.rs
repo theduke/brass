@@ -152,10 +152,15 @@ impl AppState {
     }
 
     fn render_component(&mut self, component_id: ComponentId) {
-        let (mut comp, finisher) = self
-            .component_manager
-            .borrow(component_id)
-            .expect("Component has disappeared");
+        let opt = self.component_manager.borrow(component_id);
+
+        let (mut comp, finisher) = match opt {
+            Some((c, f)) => (c, f),
+            None => {
+                tracing::error!("Component has disappeared");
+                return;
+            }
+        };
 
         comp.render(self);
         finisher.return_component(&mut self.component_manager, comp);

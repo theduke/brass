@@ -8,9 +8,12 @@ pub mod vdom;
 
 pub mod util;
 
-pub use app::{boot, Callback, Component, Context, EffectGuard, RenderContext, ShouldRender};
+pub use app::{
+    boot, Callback, Component, Context, EffectGuard, PropComponent, PropWrapper, RenderContext,
+    ShouldRender,
+};
 
-pub use vdom::VNode;
+pub use vdom::{Shared, VNode};
 
 /// Enable the properties of a Component to be used when building the virtual
 /// dom.
@@ -32,6 +35,14 @@ macro_rules! enable_props {
         impl brass::vdom::Render for $prop {
             fn render(self) -> brass::vdom::VNode {
                 <$comp as brass::Component>::build(self)
+            }
+        }
+    };
+
+    (wrapped $prop:ty => $comp:ty) => {
+        impl brass::vdom::Render for $prop {
+            fn render(self) -> brass::vdom::VNode {
+                <$comp as brass::PropComponent>::build(self)
             }
         }
     };
