@@ -51,10 +51,6 @@ impl AppHandle {
         }
     }
 
-    pub fn handle_event(&self, callback_id: EventCallbackId, event: web_sys::Event) {
-        self.update(Task::Event { callback_id, event });
-    }
-
     pub(crate) fn update(&self, task: Task) {
         {
             self.borrow_queue_mut().push(task)
@@ -62,6 +58,10 @@ impl AppHandle {
         if let Ok(mut state) = self.inner.0.try_borrow_mut() {
             self.process_tasks(&mut state);
         }
+    }
+
+    pub fn handle_event(&self, callback_id: EventCallbackId, event: web_sys::Event) {
+        self.update(Task::Event { callback_id, event });
     }
 
     pub fn send_message(&self, component_id: ComponentId, msg: AnyBox) {
