@@ -235,12 +235,17 @@ impl<C: Component> DynamicComponent for C {
         // trace!(?state, "dyn_render component {}", self.name());
 
         let mut render_ctx = DomRenderContext::<C>::new(app, state.id());
+
+        super::state::Timer::finish_render();
+
         let node = render_ctx.patch(
             &state.parent,
             state.next_sibling.as_ref(),
             last_vnode,
             &mut vnode,
         );
+
+        super::state::Timer::finish_patch();
 
         // Call Component::on_render hook.
         self.on_render(false);

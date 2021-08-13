@@ -15,6 +15,63 @@ pub struct ContextContainer {
     values: HashMap<std::any::TypeId, AnyBox>,
 }
 
+pub(crate) struct Timer {
+    perf: once_cell::unsync::Lazy<web_sys::Performance>,
+    last_timestamp: f64,
+    render: f64,
+    patch: f64,
+}
+
+impl Timer {
+    #[inline]
+    pub fn finish_render() {
+        #[cfg(feature = "timings")]
+        unsafe {
+            let now = TIMER.perf.now();
+            TIMER.render += now - TIMER.last_timestamp;
+            TIMER.last_timestamp = now;
+        }
+    }
+
+    #[inline]
+    pub fn finish_patch() {
+        #[cfg(feature = "timings")]
+        unsafe {
+            TIMER.patch += 0.0;
+            let now = TIMER.perf.now();
+            TIMER.render += now - TIMER.last_timestamp;
+            TIMER.last_timestamp = now;
+        }
+    }
+
+    #[inline]
+    pub fn start_rendering() {
+        #[cfg(feature = "timings")]
+        unsafe {
+            TIMER.last_timestamp = TIMER.perf.now();
+            TIMER.render = 0.0;
+            TIMER.patch = 0.0;
+        }
+    }
+
+    #[inline]
+    pub fn finish_rendering() {
+        #[cfg(feature = "timings")]
+        unsafe {
+            tracing::trace!(time_render=%TIMER.render, time_patch=%TIMER.patch, "rendered");
+        }
+    }
+}
+
+pub(crate) static mut TIMER: Timer = Timer {
+    perf: once_cell::unsync::Lazy::new(|| {
+        web_sys::window().unwrap().performance().unwrap()
+    }),
+    last_timestamp: 0.0,
+    render: 0.0,
+    patch: 0.0,
+};
+
 impl ContextContainer {
     pub fn new() -> Self {
         Self {
@@ -167,11 +224,15 @@ impl AppState {
     }
 
     pub fn render(&mut self) {
+        Timer::start_rendering();
+
         // FIXME: determine the minimal sub-tree to re-render.
         while let Some(id) = self.render_queue.pop() {
             self.render_component(id);
         }
         self.render_component(ComponentId::ROOT);
+
+        Timer::finish_rendering();
     }
 
     pub fn handle_event(
