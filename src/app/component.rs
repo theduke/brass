@@ -1,3 +1,5 @@
+// mod state;
+
 use std::rc::Rc;
 
 use crate::{
@@ -301,6 +303,47 @@ impl<C: Component> DynamicComponent for C {
     }
 }
 
+/// A prop component automatically manages the properties of a component, and
+/// supplies them to the various hooks as an immutable argument.
+///
+/// In a regular [`Component`] the props must be stored in the component state
+/// manually, **and also updated on changes** in [Component::on_property_change].
+///
+/// A [`PropComponent`] is much easier to use in most circumstances.
+///
+/// ```rust
+/// struct Counter {
+///     pub start_value: usize,
+///     pub step_interval: usize,
+///     pub font_size: usize,
+/// }
+///
+/// struct State {
+///     counter: usize,
+/// }
+///
+/// impl brass::PropComponent for State {
+///   type Properties = NumberViewer;
+///   type Msg = usize;
+///
+///    fn init(props: &Self::Properties, ctx: &mut Context<Self::Msg>) -> Self {
+///        Self{
+///            counter: props.start_value,
+///        }
+///    }
+///
+///    fn update(&mut self, msg: Self::Msg, props: &Self::Properties, ctx: &mut Context<Self::Msg>) {
+///        self.counter += msg + props.step_interval;
+///    }
+///
+///    fn render(&self, props: &Self::Properties, ctx: RenderContext<PropWrapper<Self>>) -> VNode {
+///        brass::vdom::div()
+///            .and(self.counter)
+///            .style_raw(format!("font-size: {}px", props.font_size))
+///            .build()
+///    }
+/// }
+/// ```
 pub trait PropComponent: Sized + 'static {
     type Properties;
     type Msg: 'static;
