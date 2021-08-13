@@ -191,18 +191,18 @@ pub fn icon_fa(icon: impl Into<String>) -> TagBuilder {
         .and(tag(Tag::I).class(icon))
 }
 
-pub fn modal<C: DomExtend>(content: C, on_close: EventCallback) -> TagBuilder {
-    let on_close2 = on_close.clone();
+pub fn modal<C: DomExtend>(content: C, on_close: Callback<()>) -> TagBuilder {
+    let on_close_ev = EventCallback::callback(|_| (), on_close);
     let bg = div()
         .class("modal-background")
-        .on(Event::Click, on_close.clone());
+        .on(Event::Click, on_close_ev.clone());
 
     let inner = div().class("modal-content").and(content);
 
     let close = button()
         .class("modal-close is-large")
         .attr(Attr::AriaLabel, "close")
-        .on(Event::Click, on_close2);
+        .on(Event::Click, on_close_ev.clone());
 
     div().class("modal is-active").and(bg).and(inner).and(close)
 }
@@ -313,30 +313,24 @@ pub struct FieldHorizontal<C> {
     pub control: C,
 }
 
-impl<C> FieldHorizontal<C> {
-    pub fn render(self) -> TagBuilder
+impl<C: Render> Render for FieldHorizontal<C> {
+    fn render(self) -> VNode
     where
         C: DomExtend,
     {
-        field().and_class("is-horizontal").and((
-            div()
-                .class("field-label is-normal")
-                .and(label_with(self.label)),
-            div().class("field-body").and(
-                field()
-                    .and(div().class("control").and(self.control))
-                    .and_opt(self.help),
-            ),
-        ))
-    }
-}
-
-impl<C> DomExtend for FieldHorizontal<C>
-where
-    C: DomExtend + 'static,
-{
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(self.render());
+        field()
+            .and_class("is-horizontal")
+            .and((
+                div()
+                    .class("field-label is-normal")
+                    .and(label_with(self.label)),
+                div().class("field-body").and(
+                    field()
+                        .and(div().class("control").and(self.control))
+                        .and_opt(self.help),
+                ),
+            ))
+            .build()
     }
 }
 
@@ -348,8 +342,8 @@ pub struct Input {
     pub on_input: EventCallback,
 }
 
-impl DomExtend for Input {
-    fn extend(self, parent: &mut TagBuilder) {
+impl Render for Input {
+    fn render(self) -> VNode {
         let mut inp = input()
             .and_class(self.color.as_class())
             .attr(Attr::Type, self._type)
@@ -360,7 +354,7 @@ impl DomExtend for Input {
             inp.add_attr(Attr::Placeholder, placeholder);
         }
 
-        parent.add_child(inp);
+        inp.build()
     }
 }
 
