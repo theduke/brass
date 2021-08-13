@@ -263,6 +263,7 @@ pub fn card_content() -> TagBuilder {
     div().class("card-content")
 }
 
+#[derive(Debug)]
 pub struct Help<T> {
     pub message: T,
     pub color: Color,
@@ -309,7 +310,7 @@ where
 
 pub struct FieldHorizontal<C> {
     pub label: String,
-    pub help: Option<Help<String>>,
+    pub help: Option<Help<VNode>>,
     pub control: C,
 }
 
