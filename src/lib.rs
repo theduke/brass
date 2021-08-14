@@ -1,6 +1,7 @@
 #![recursion_limit = "512"]
 
 mod any;
+mod strings;
 
 mod app;
 pub mod dom;
@@ -8,12 +9,14 @@ pub mod vdom;
 
 pub mod util;
 
-pub use app::{
-    boot, Callback, Component, Context, EffectGuard, PropComponent, PropWrapper, RenderContext,
-    ShouldRender,
+pub use self::{
+    app::{
+        boot, Callback, Component, Context, EffectGuard, PropComponent, PropWrapper, RenderContext,
+        ShouldRender,
+    },
+    strings::Str,
+    vdom::{Shared, VNode},
 };
-
-pub use vdom::{Shared, VNode};
 
 /// Enable the properties of a Component to be used when building the virtual
 /// dom.

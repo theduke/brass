@@ -1,7 +1,7 @@
 use crate::{
     app::EventCallbackId,
     dom::{Attr, Event, Tag},
-    Component,
+    Component, Shared, Str,
 };
 
 use super::{EventCallback, EventHandler, Ref, VComponent, VNode, VRef, VTag, VText};
@@ -29,16 +29,16 @@ impl TagBuilder {
         parent.into().and(self)
     }
 
-    pub fn add_attr(&mut self, attr: Attr, value: impl Into<String>) {
+    pub fn add_attr(&mut self, attr: Attr, value: impl Into<Str>) {
         self.tag.attributes.insert(attr.into(), value.into());
     }
 
-    pub fn attr(mut self, attribute: Attr, value: impl Into<String>) -> Self {
+    pub fn attr(mut self, attribute: Attr, value: impl Into<Str>) -> Self {
         self.tag.attributes.insert(attribute.into(), value.into());
         self
     }
 
-    pub fn attr_if(mut self, flag: bool, attribute: Attr, value: impl Into<String>) -> Self {
+    pub fn attr_if(mut self, flag: bool, attribute: Attr, value: impl Into<Str>) -> Self {
         if flag {
             self.tag.attributes.insert(attribute.into(), value.into());
         }
@@ -46,19 +46,19 @@ impl TagBuilder {
     }
 
     pub fn attr_toggle(mut self, attribute: Attr) -> Self {
-        self.tag.attributes.insert(attribute.into(), String::new());
+        self.tag.attributes.insert(attribute.into(), Str::empty());
         self
     }
 
     pub fn attr_toggle_if(mut self, flag: bool, attribute: Attr) -> Self {
         if flag {
-            self.tag.attributes.insert(attribute.into(), String::new());
+            self.tag.attributes.insert(attribute.into(), Str::empty());
         }
         self
     }
 
     #[inline]
-    pub fn class(self, cls: impl Into<String>) -> Self {
+    pub fn class(self, cls: impl Into<Str>) -> Self {
         self.attr(Attr::Class, cls)
     }
 
@@ -71,7 +71,7 @@ impl TagBuilder {
         }
     }
 
-    pub fn class_opt(self, cls: Option<impl Into<String>>) -> Self {
+    pub fn class_opt(self, cls: Option<impl Into<Str>>) -> Self {
         if let Some(cls) = cls {
             self.attr(Attr::Class, cls)
         } else {
@@ -81,8 +81,8 @@ impl TagBuilder {
 
     pub fn and_class(mut self, class: &str) -> Self {
         if let Some(old) = self.tag.attributes.get_mut(&Attr::Class) {
-            old.push(' ');
-            old.push_str(class);
+            let value = std::mem::take(old);
+            *old = value.push(' ').push_str(class);
             self
         } else {
             self.class(class)
@@ -92,8 +92,8 @@ impl TagBuilder {
     pub fn and_class_if(mut self, flag: bool, class: &str) -> Self {
         if flag {
             if let Some(old) = self.tag.attributes.get_mut(&Attr::Class) {
-                old.push(' ');
-                old.push_str(class);
+                let value = std::mem::take(old);
+                *old = value.push(' ').push_str(class);
                 self
             } else {
                 self.class(class)
@@ -104,11 +104,11 @@ impl TagBuilder {
     }
 
     #[inline]
-    pub fn style_raw(self, style: impl Into<String>) -> Self {
+    pub fn style_raw(self, style: impl Into<Str>) -> Self {
         self.attr(Attr::Style, style)
     }
 
-    pub fn attr_opt(mut self, attribute: Attr, value: Option<impl Into<String>>) -> Self {
+    pub fn attr_opt(mut self, attribute: Attr, value: Option<impl Into<Str>>) -> Self {
         if let Some(v) = value {
             self.tag.attributes.insert(attribute.into(), v.into());
         }
@@ -239,6 +239,15 @@ impl<'a> Render for &'a str {
     }
 }
 
+impl<T> Render for Shared<T>
+where
+    T: RenderRef,
+{
+    fn render(self) -> VNode {
+        self.0.as_ref().render_ref()
+    }
+}
+
 impl Render for TagBuilder {
     fn render(self) -> VNode {
         self.build()
@@ -340,8 +349,18 @@ where
 }
 
 #[inline]
-pub fn text(text: impl Into<VText>) -> VNode {
-    VNode::Text(text.into())
+pub fn text(text: impl Into<Str>) -> VNode {
+    VNode::Text(VText::new(text.into()))
+}
+
+#[inline]
+pub fn s(text: impl Into<Str>) -> VNode {
+    VNode::Text(VText::new(text.into()))
+}
+
+#[inline]
+pub fn text_static(text: &'static str) -> VNode {
+    VNode::Text(VText::new(Str::stat(text)))
 }
 
 #[inline]
@@ -375,7 +394,7 @@ pub fn i() -> TagBuilder {
 }
 
 #[inline]
-pub fn img(src: impl Into<String>) -> TagBuilder {
+pub fn img(src: impl Into<Str>) -> TagBuilder {
     TagBuilder::new(Tag::Img).attr(Attr::Src, src)
 }
 

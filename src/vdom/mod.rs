@@ -3,12 +3,12 @@ pub mod render;
 mod builder;
 pub use builder::*;
 
-use std::{cell::RefCell, collections::HashMap, rc::Rc};
+use std::{cell::RefCell, rc::Rc};
 
 use crate::{
     any::AnyBox,
     app::{ComponentConstructor, ComponentId, EventCallbackId},
-    dom, Callback, Component,
+    dom, Callback, Component, Str,
 };
 
 #[derive(Clone)]
@@ -36,7 +36,6 @@ impl<I, O> Func<I, O> {
 /// This is useful for representing dynamic renderers in applications.
 pub type Renderer<I> = Func<I, VNode>;
 
-
 impl<I> Renderer<I> {
     pub fn render(&self, input: I) -> VNode {
         match self {
@@ -45,7 +44,6 @@ impl<I> Renderer<I> {
         }
     }
 }
-
 
 #[derive(Clone)]
 pub enum RefFunc<I, O> {
@@ -127,20 +125,11 @@ impl<T> std::ops::Deref for Shared<T> {
 
 impl<T> PartialEq for Shared<T> {
     fn eq(&self, other: &Self) -> bool {
-        &*self.0 as *const T == &*other.0 as *const T
+        Rc::ptr_eq(&self.0, &other.0)
     }
 }
 
 impl<T> Eq for Shared<T> {}
-
-impl<T> Render for Shared<T>
-where
-    T: RenderRef,
-{
-    fn render(self) -> VNode {
-        self.0.as_ref().render_ref()
-    }
-}
 
 /// Wrapper around a [`web_sys::Node`].
 /// A fake JsValue (JsValue::UNDEFINED) is used for the empty state.
@@ -218,34 +207,16 @@ impl OptionalElement {
 // TODO: use cow or https://github.com/maciejhirsz/beef ?
 #[derive(Clone, Debug)]
 pub struct VText {
-    value: String,
+    value: Str,
     node: OptionalNode,
 }
 
 impl VText {
-    pub fn new(value: impl Into<String>) -> Self {
+    pub fn new(value: Str) -> Self {
         Self {
             value: value.into(),
             node: OptionalNode::new_none(),
         }
-    }
-}
-
-impl<'a> From<&'a str> for VText {
-    fn from(v: &'a str) -> Self {
-        VText::new(v)
-    }
-}
-
-impl<'a> From<&'a String> for VText {
-    fn from(v: &'a String) -> Self {
-        VText::new(v)
-    }
-}
-
-impl From<String> for VText {
-    fn from(v: String) -> Self {
-        VText::new(v)
     }
 }
 
@@ -324,7 +295,7 @@ impl PartialEq for EventHandler {
 pub struct VTag {
     tag: dom::Tag,
     // TODO: use a faster hash map and a better key.
-    attributes: HashMap<dom::Attr, String>,
+    attributes: fnv::FnvHashMap<dom::Attr, Str>,
     children: Vec<VNode>,
 
     // TODO: should this be a u32 or a Rc<String> ?
@@ -339,7 +310,7 @@ impl VTag {
     pub fn new(tag: dom::Tag) -> Self {
         Self {
             tag,
-            attributes: HashMap::new(),
+            attributes: fnv::FnvHashMap::default(),
             children: Vec::new(),
             key: None,
             event_handlers: Vec::new(),
