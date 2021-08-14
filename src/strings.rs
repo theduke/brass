@@ -23,8 +23,8 @@ impl Str {
         SmallStr::from_str(value)
     }
 
-    pub fn new(value: impl Into<String>) -> Self {
-        Self(Repr::String(value.into()))
+    pub fn new() -> Self {
+        Self::empty()
     }
 
     pub fn empty() -> Self {

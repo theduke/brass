@@ -221,6 +221,12 @@ where
     }
 }
 
+impl Render for Str {
+    fn render(self) -> VNode {
+        text(self)
+    }
+}
+
 impl Render for String {
     fn render(self) -> VNode {
         text(self)

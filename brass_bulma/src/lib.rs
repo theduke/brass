@@ -9,7 +9,7 @@ pub use dropdown::Dropdown;
 use brass::{
     dom::{Attr, Event, Tag},
     vdom::{self, div, DomExtend, EventCallback, Render, TagBuilder},
-    Callback, VNode,
+    Callback, Str, VNode,
 };
 use vdom::{span, tag};
 
@@ -184,7 +184,7 @@ pub fn table() -> TagBuilder {
     vdom::table().class("table")
 }
 
-pub fn icon_fa(icon: impl Into<String>) -> TagBuilder {
+pub fn icon_fa(icon: impl Into<Str>) -> TagBuilder {
     span()
         .class("icon")
         .attr(Attr::AriaHidden, "true")
@@ -282,8 +282,8 @@ where
 }
 
 pub struct Field<C> {
-    pub label: String,
-    pub help: Option<Help<String>>,
+    pub label: Str,
+    pub help: Option<Help<Str>>,
     pub control: C,
 }
 
@@ -309,7 +309,7 @@ where
 }
 
 pub struct FieldHorizontal<C> {
-    pub label: String,
+    pub label: Str,
     pub help: Option<Help<VNode>>,
     pub control: C,
 }
@@ -338,8 +338,8 @@ impl<C: Render> Render for FieldHorizontal<C> {
 pub struct Input {
     pub _type: &'static str,
     pub color: Color,
-    pub placeholder: Option<String>,
-    pub value: String,
+    pub placeholder: Option<Str>,
+    pub value: Str,
     pub on_input: EventCallback,
 }
 
@@ -361,11 +361,11 @@ impl Render for Input {
 
 pub struct Textarea {
     pub color: Color,
-    pub placeholder: Option<String>,
-    pub value: String,
+    pub placeholder: Option<Str>,
+    pub value: Str,
     pub on_input: EventCallback,
     pub on_keydown: Option<EventCallback>,
-    pub style_raw: Option<String>,
+    pub style_raw: Option<Str>,
 }
 
 impl Render for Textarea {
@@ -395,7 +395,7 @@ impl Render for Textarea {
 #[derive(Clone, Debug)]
 pub struct SelectOption<T> {
     pub value: T,
-    pub label: String,
+    pub label: Str,
 }
 
 pub struct Select<T: 'static> {
@@ -411,7 +411,7 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
             vdom::option()
                 .attr(Attr::Value, index.to_string())
                 .attr_toggle_if(selected, Attr::Checked)
-                .and(&opt.label)
+                .and(opt.label.clone())
         });
 
         let opts = self.options.clone();
@@ -462,7 +462,7 @@ impl<'a, T: PartialEq + Eq + Clone + std::hash::Hash> Render for TagSelect<'a, T
             span()
                 .class(class)
                 .attr(Attr::Data, index.to_string())
-                .and(&opt.label)
+                .and(opt.label.clone())
                 .on_click(EventCallback::Closure(Rc::new(move |_| {
                     on_select.send(value.clone());
                     None
@@ -474,7 +474,7 @@ impl<'a, T: PartialEq + Eq + Clone + std::hash::Hash> Render for TagSelect<'a, T
 }
 
 pub struct FileInput {
-    pub label: String,
+    pub label: Str,
     pub multi: bool,
     pub on_change: EventCallback,
 }
@@ -501,7 +501,7 @@ impl DomExtend for FileInput {
 
 pub struct Checkbox {
     pub color: Color,
-    pub label: String,
+    pub label: Str,
     pub value: bool,
     pub on_input: EventCallback,
 }
