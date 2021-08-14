@@ -392,7 +392,7 @@ impl Render for Textarea {
     }
 }
 
-#[derive(Debug)]
+#[derive(Clone, Debug)]
 pub struct SelectOption<T> {
     pub value: T,
     pub label: String,

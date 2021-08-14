@@ -64,9 +64,7 @@ impl Timer {
 }
 
 pub(crate) static mut TIMER: Timer = Timer {
-    perf: once_cell::unsync::Lazy::new(|| {
-        web_sys::window().unwrap().performance().unwrap()
-    }),
+    perf: once_cell::unsync::Lazy::new(|| web_sys::window().unwrap().performance().unwrap()),
     last_timestamp: 0.0,
     render: 0.0,
     patch: 0.0,

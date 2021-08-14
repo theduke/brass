@@ -24,8 +24,8 @@ impl<I, O> Func<I, O> {
 
     pub fn call(&self, input: I) -> O {
         match self {
-            Func::Static(f) => f(input),
-            Func::Dyn(f) => (f.as_ref())(input),
+            Self::Static(f) => f(input),
+            Self::Dyn(f) => (f.as_ref())(input),
         }
     }
 }
@@ -36,13 +36,47 @@ impl<I, O> Func<I, O> {
 /// This is useful for representing dynamic renderers in applications.
 pub type Renderer<I> = Func<I, VNode>;
 
-impl<I> Renderer<I> {}
 
 impl<I> Renderer<I> {
     pub fn render(&self, input: I) -> VNode {
         match self {
-            Renderer::Static(f) => f(input),
-            Renderer::Dyn(f) => (f.as_ref())(input),
+            Self::Static(f) => f(input),
+            Self::Dyn(f) => (f.as_ref())(input),
+        }
+    }
+}
+
+
+#[derive(Clone)]
+pub enum RefFunc<I, O> {
+    Static(fn(&I) -> O),
+    Dyn(Rc<dyn Fn(&I) -> O>),
+}
+
+impl<I, O> RefFunc<I, O> {
+    pub fn dynamic(f: impl Fn(&I) -> O + 'static) -> Self {
+        Self::Dyn(Rc::new(f))
+    }
+
+    pub fn call(&self, input: &I) -> O {
+        match self {
+            Self::Static(f) => f(input),
+            Self::Dyn(f) => (f.as_ref())(input),
+        }
+    }
+}
+
+/// A render fn that can receives the given data as input and renders to a
+/// virtual DOM node.
+///
+/// This is useful for representing dynamic renderers in applications.
+pub type RefRenderer<I> = RefFunc<I, VNode>;
+
+impl<I> RefRenderer<I> {
+    pub fn render(&self, input: &I) -> VNode {
+        match self {
+            Self::Static(f) => f(input),
+            Self::Dyn(f) => (f.as_ref())(input),
         }
     }
 }

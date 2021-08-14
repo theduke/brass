@@ -1,6 +1,6 @@
 use std::{cell::Cell, pin::Pin, rc::Rc};
 
-use crate::any::AnyBox;
+use crate::{any::AnyBox, vdom::EventCallback};
 
 use super::handle::ComponentAppHandle;
 
@@ -153,5 +153,26 @@ impl<M: 'static> Callback<M> {
             handle: self.handle.clone(),
             mapper: Some(nested_mapper),
         }
+    }
+
+    /// Construct an event handler that triggers this callback.
+    ///
+    /// Must supply a mapper that transforms the DOM event into the expected
+    /// message.
+    pub fn on<F>(self, mapper: F) -> EventCallback
+    where
+        F: Fn(web_sys::Event) -> M + 'static,
+    {
+        EventCallback::callback(mapper, self)
+    }
+
+    /// Construct an event handler that triggers this callback.
+    ///
+    /// Must supply a mapper that produces the expected message.
+    pub fn on_simple<F>(self, f: F) -> EventCallback
+    where
+        F: Fn() -> M + 'static,
+    {
+        EventCallback::callback(move |_ev: web_sys::Event| f(), self)
     }
 }
