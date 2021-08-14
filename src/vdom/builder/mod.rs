@@ -354,8 +354,8 @@ pub fn text(text: impl Into<Str>) -> VNode {
 }
 
 #[inline]
-pub fn s(text: impl Into<Str>) -> VNode {
-    VNode::Text(VText::new(text.into()))
+pub fn s(text: &'static str) -> VNode {
+    VNode::Text(VText::new(Str::stat(text)))
 }
 
 #[inline]
