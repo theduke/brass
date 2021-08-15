@@ -34,6 +34,10 @@ impl Str {
         }))
     }
 
+    pub fn shared(value: impl Into<Rc<str>>) -> Self {
+        Self(Repr::Shared(value.into()))
+    }
+
     pub fn len(&self) -> usize {
         match &self.0 {
             Repr::Static(s) => s.len(),
