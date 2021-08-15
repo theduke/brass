@@ -336,7 +336,9 @@ impl SmallStr {
         if len <= Self::CAP {
             // TODO: check assembly if this code needs to be smarter or if the optimizer takes care of it.
             let mut data: [u8; Self::CAP] = Default::default();
-            data.copy_from_slice(value.as_bytes());
+            for (index, byte) in value.as_bytes().into_iter().enumerate() {
+                data[index] = *byte;
+            }
 
             for b in c.encode_utf8(&mut [0u8; 4]).as_bytes() {
                 data[value_len] = *b;
