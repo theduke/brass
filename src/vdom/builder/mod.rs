@@ -212,18 +212,15 @@ pub trait RenderRef {
     fn render_ref(&self) -> VNode;
 }
 
-impl<'a, T> Render for &'a T
-where
-    T: RenderRef,
-{
-    fn render(self) -> VNode {
-        RenderRef::render_ref(self)
-    }
-}
-
 impl Render for Str {
     fn render(self) -> VNode {
         text(self)
+    }
+}
+
+impl<'a> Render for &'a Str {
+    fn render(self) -> VNode {
+        self.clone().render()
     }
 }
 
@@ -360,8 +357,8 @@ pub fn text(text: impl Into<Str>) -> VNode {
 }
 
 #[inline]
-pub fn s(text: &'static str) -> VNode {
-    VNode::Text(VText::new(Str::stat(text)))
+pub fn s(text: &'static str) -> Str {
+    Str::stat(text)
 }
 
 #[inline]
