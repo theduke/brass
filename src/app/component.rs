@@ -359,7 +359,7 @@ pub trait PropComponent: Sized + 'static {
 
     /// Called immediately after a component has been attached to the DOM.
     #[allow(unused_variables)]
-    fn on_render(&mut self, first_render: bool) {}
+    fn on_render(&mut self, props: &Self::Properties, first_render: bool) {}
 
     /// Called before a component is removed from the DOM.
     ///
@@ -404,6 +404,10 @@ impl<C: PropComponent + 'static> Component for PropWrapper<C> {
         let flag = C::on_property_change(&mut self.state, &self.props, &props, ctx);
         self.props = props;
         flag
+    }
+
+    fn on_render(&mut self, first_render: bool) {
+        C::on_render(&mut self.state, &self.props, first_render)
     }
 }
 
