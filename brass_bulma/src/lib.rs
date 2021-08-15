@@ -404,12 +404,15 @@ pub struct SelectOption<T> {
 
 pub struct Select<T: 'static> {
     pub value: Option<T>,
+    pub empty_option_label: Option<Str>,
     pub options: Rc<Vec<SelectOption<T>>>,
     pub on_select: Callback<Option<T>>,
 }
 
 impl<T: PartialEq + Eq + Clone> Render for Select<T> {
     fn render(self) -> VNode {
+        let has_empty = self.empty_option_label.is_some();
+
         let options = self.options.iter().enumerate().map(|(index, opt)| {
             let selected = self.value.as_ref() == Some(&opt.value);
             vdom::option()
@@ -417,11 +420,17 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
                 .attr_toggle_if(selected, Attr::Checked)
                 .and(opt.label.clone())
         });
+        let empty_option = self.empty_option_label.as_ref().map(|label| {
+            vdom::option()
+                .attr(Attr::Value, 0.to_string())
+                .attr_toggle_if(self.value.is_none(), Attr::Checked)
+                .and(label.clone())
+        });
 
         let opts = self.options.clone();
         // TODO: this clone is redundant.
         let callback = self.on_select.clone();
-        let select = vdom::select().and_iter(options).on(
+        let select = vdom::select().and(empty_option).and_iter(options).on(
             Event::Change,
             EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
                 let index = ev
@@ -430,14 +439,23 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
                     .value()
                     .parse::<usize>()
                     .ok()?;
-                let value = opts.get(index)?.value.clone();
-                callback.send(Some(value));
+
+                let msg = if has_empty {
+                    if index == 0 {
+                        None
+                    } else {
+                        opts.get(index + 1).map(|x| x.value.clone())
+                    }
+                } else {
+                    opts.get(index + 1).map(|x| x.value.clone())
+                };
+                callback.send(msg);
 
                 None
             })),
         );
 
-        div().class("select").and(select).build()
+        div().class(s("select")).and(select).build()
     }
 }
 
