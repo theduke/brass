@@ -411,19 +411,17 @@ pub struct Select<T: 'static> {
 
 impl<T: PartialEq + Eq + Clone> Render for Select<T> {
     fn render(self) -> VNode {
-        let has_empty = self.empty_option_label.is_some();
-
         let options = self.options.iter().enumerate().map(|(index, opt)| {
             let selected = self.value.as_ref() == Some(&opt.value);
             vdom::option()
                 .attr(Attr::Value, index.to_string())
-                .attr_toggle_if(selected, Attr::Checked)
+                .attr_toggle_if(selected, Attr::Selected)
                 .and(opt.label.clone())
         });
         let empty_option = self.empty_option_label.as_ref().map(|label| {
             vdom::option()
-                .attr(Attr::Value, 0.to_string())
-                .attr_toggle_if(self.value.is_none(), Attr::Checked)
+                .attr(Attr::Value, s(""))
+                .attr_toggle_if(self.value.is_none(), Attr::Selected)
                 .and(label.clone())
         });
 
@@ -433,24 +431,18 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
         let select = vdom::select().and(empty_option).and_iter(options).on(
             Event::Change,
             EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
-                let index = ev
+                let value = ev
                     .target()?
                     .dyn_ref::<web_sys::HtmlSelectElement>()?
-                    .value()
-                    .parse::<usize>()
-                    .ok()?;
+                    .value();
 
-                let msg = if has_empty {
-                    if index == 0 {
-                        None
-                    } else {
-                        opts.get(index + 1).map(|x| x.value.clone())
-                    }
+                if value == "" {
+                    callback.send(None);
                 } else {
-                    opts.get(index + 1).map(|x| x.value.clone())
-                };
-                callback.send(msg);
-
+                    let index = value.parse::<usize>().ok()?;
+                    let value = opts.get(index)?.value.clone();
+                    callback.send(Some(value));
+                }
                 None
             })),
         );
