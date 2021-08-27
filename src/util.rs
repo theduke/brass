@@ -126,30 +126,46 @@ pub(crate) fn timeout(delay: std::time::Duration) -> Timeout {
     Timeout::new(target)
 }
 
-// pub struct KeyboardSubscription<M> {
-//     target: web_sys::EventTarget,
-//     closure: Closure<dyn Fn(web_sys::Event)>,
-//     queue: Rc<RefCell<VecDeque<M>>>,
-// }
+#[must_use]
+pub struct EventSubscription {
+    event: crate::dom::Event,
+    target: web_sys::EventTarget,
+    closure: Closure<dyn Fn(web_sys::Event)>,
+}
 
-// impl<M> futures::stream::Stream for KeyboardSubscription<M> {
-//     type Item = M;
+impl EventSubscription {
+    pub fn subscribe<E: wasm_bindgen::JsCast + 'static>(
+        target: web_sys::EventTarget,
+        event: crate::dom::Event,
+        callback: crate::Callback<E>,
+    ) -> Self {
+        let boxed: Box<dyn Fn(web_sys::Event)> = Box::new(move |event: web_sys::Event| {
+            if let Ok(typed_ev) = event.dyn_into::<E>() {
+                callback.send(typed_ev);
+            }
+        });
+        let closure = wasm_bindgen::closure::Closure::wrap(boxed);
 
-//     fn poll_next(
-//         self: std::pin::Pin<&mut Self>,
-//         cx: &mut std::task::Context<'_>,
-//     ) -> std::task::Poll<Option<Self::Item>> {
-//         let s = self.get_mut();
+        target
+            .add_event_listener_with_callback(event.as_str(), closure.as_ref().unchecked_ref())
+            .unwrap();
+        Self {
+            event,
+            target,
+            closure,
+        }
+    }
+}
 
-//         if s.closure.is_none() {
-
-//             std::task::Poll::Pending
-//         } else {
-//             if let Some(msg) = s.queue.borrow_mut().pop_front() {
-//                 std::task::Poll::Ready(Some(msg))
-//             } else {
-//                 std::task::Poll::Pending
-//             }
-//         }
-//     }
-// }
+impl Drop for EventSubscription {
+    fn drop(&mut self) {
+        // FIXME: remove log
+        tracing::trace!("REMOVING EVENT SUBSCRIPTION");
+        if let Err(_err) = self.target.remove_event_listener_with_callback(
+            self.event.as_str(),
+            self.closure.as_ref().unchecked_ref(),
+        ) {
+            tracing::error!("Could not remove EventSubscription event listener");
+        }
+    }
+}
