@@ -263,11 +263,12 @@ impl<C: Component> DynamicComponent for C {
         let real_msg = match msg.downcast::<C::Msg>() {
             Ok(msg) => *msg,
             Err(err) => {
-                panic!(
+                tracing::error!(
                     "Received invalid message type for component {}: {:?}",
                     std::any::type_name::<Self>(),
                     err,
                 );
+                return false;
             }
         };
 
