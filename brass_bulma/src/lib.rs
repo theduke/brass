@@ -159,6 +159,10 @@ pub fn h5_with<C: DomExtend>(content: C) -> TagBuilder {
     vdom::h5().class(s("title is-5")).and(content)
 }
 
+pub fn subtitle_4(label: Str) -> VNode {
+    vdom::h4().class(s("subtitle is-4")).and(label).build()
+}
+
 pub fn menu_list() -> TagBuilder {
     vdom::ul().class(s("menu-list"))
 }
@@ -187,6 +191,13 @@ pub fn table() -> TagBuilder {
 pub fn icon_fa(icon: impl Into<Str>) -> TagBuilder {
     span()
         .class(s("icon"))
+        .attr(Attr::AriaHidden, "true")
+        .and(tag(Tag::I).class(icon))
+}
+
+pub fn icon_fa_left(icon: impl Into<Str>) -> TagBuilder {
+    span()
+        .class(s("icon is-left"))
         .attr(Attr::AriaHidden, "true")
         .and(tag(Tag::I).class(icon))
 }
