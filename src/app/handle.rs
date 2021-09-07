@@ -81,6 +81,10 @@ impl AppHandle {
         //     }),
         // };
 
+        // IMPORTANT: this sets up the static lookup tables for interned strings.
+        // (event, tag, and attribute names).
+        crate::vdom::render::setup();
+
         let state = RefCell::new(AppState::new());
 
         let queue = RefCell::new(Vec::new());

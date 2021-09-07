@@ -1,13 +1,15 @@
+mod string_tables;
+pub use string_tables::setup;
+
 use wasm_bindgen::JsCast;
 
 use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VRef, VTag};
 use crate::{
     app::{AppState, ComponentEventHandler, ComponentId, EventCallbackId},
-    dom, Component,
+    dom, Component, Str,
 };
 
-#[inline]
-fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &str, elem: &web_sys::Element) {
+fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &Str, elem: &web_sys::Element) {
     match attribute {
         dom::Attr::Value if tag == dom::Tag::Input => {
             let input: &web_sys::HtmlInputElement = elem.unchecked_ref();
@@ -22,9 +24,7 @@ fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &str, elem: &web_sy
             // TODO: don't set if not required.
             input.set_checked(!value.is_empty());
         }
-        _other => {
-            elem.set_attribute(attribute.as_str(), value).ok();
-        }
+        _other => string_tables::set_element_attribute(elem, attribute, value),
     }
 }
 
@@ -44,10 +44,7 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
     }
 
     fn create_element(&self, tag: dom::Tag) -> web_sys::Element {
-        self.app
-            .document
-            .create_element(tag.as_str())
-            .expect("Could not create tag")
+        string_tables::create_element(tag)
     }
 
     fn create_text_node(&self, text: &str) -> web_sys::Node {
