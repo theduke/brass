@@ -212,6 +212,12 @@ pub trait RenderRef {
     fn render_ref(&self) -> VNode;
 }
 
+impl Render for VNode {
+    fn render(self) -> VNode {
+        self
+    }
+}
+
 impl Render for Str {
     fn render(self) -> VNode {
         text(self)
@@ -270,12 +276,6 @@ pub trait DomExtend: Sized {
 impl<R: Render> DomExtend for R {
     fn extend(self, parent: &mut TagBuilder) {
         parent.add_child(self.render())
-    }
-}
-
-impl DomExtend for VNode {
-    fn extend(self, parent: &mut TagBuilder) {
-        parent.add_child(self)
     }
 }
 
@@ -348,6 +348,25 @@ where
         self.2.extend(parent);
         self.3.extend(parent);
         self.4.extend(parent);
+    }
+}
+
+impl<A, B, C, D, E, F> DomExtend for (A, B, C, D, E, F)
+where
+    A: DomExtend,
+    B: DomExtend,
+    C: DomExtend,
+    D: DomExtend,
+    E: DomExtend,
+    F: DomExtend,
+{
+    fn extend(self, parent: &mut TagBuilder) {
+        self.0.extend(parent);
+        self.1.extend(parent);
+        self.2.extend(parent);
+        self.3.extend(parent);
+        self.4.extend(parent);
+        self.5.extend(parent);
     }
 }
 
