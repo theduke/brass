@@ -1,3 +1,5 @@
+mod interner;
+
 use std::rc::Rc;
 
 /// An abstraction over string types.
