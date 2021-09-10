@@ -251,13 +251,6 @@ impl TagBuilder {
         self
     }
 
-    // pub fn on_click<C, F>(self, ctx: &mut ) -> Self
-    //     where C: Component,
-    //           F: Fn() -> C::Msg
-    // {
-    //     self.on(Event::Click, callback)
-    // }
-
     pub fn build_ref(self, vref: &Ref) -> VNode {
         VNode::Ref(VRef {
             tag: self.tag,
