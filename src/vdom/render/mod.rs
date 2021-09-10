@@ -64,9 +64,9 @@ impl<'a, C: Component> DomRenderContext<'a, C> {
         self.app.event_manager.get_closure_fn(id)
     }
 
-    fn mount_component<'a1, 'b>(
-        &'a1 mut self,
-        comp: &'b mut VComponent,
+    fn mount_component<'s, 'c>(
+        &'s mut self,
+        comp: &'c mut VComponent,
         parent: &web_sys::Element,
         next_sibling: Option<&web_sys::Node>,
     ) -> Option<web_sys::Node> {
