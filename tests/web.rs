@@ -33,7 +33,7 @@ impl brass::Component for RefComponent {
 
     fn update(&mut self, _msg: Self::Msg, _ctxx: &mut brass::Context<Self::Msg>) {}
 
-    fn render(&self, _ctx: brass::RenderContext<Self>) -> brass::VNode {
+    fn render(&self, _ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
         div().attr(Attr::Id, "refcontainer").build_ref(&self.vref)
     }
 
@@ -85,7 +85,7 @@ impl brass::Component for CallbackComp {
         self.count += msg;
     }
 
-    fn render(&self, ctx: brass::RenderContext<Self>) -> brass::VNode {
+    fn render(&self, ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
         let callback = self.callback.clone();
         div()
             .and((

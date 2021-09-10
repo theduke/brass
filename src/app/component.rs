@@ -116,7 +116,7 @@ pub trait Component: Sized + 'static {
 
     fn init(props: Self::Properties, ctx: &mut Context<Self::Msg>) -> Self;
     fn update(&mut self, msg: Self::Msg, ctx: &mut Context<Self::Msg>);
-    fn render(&self, ctx: RenderContext<Self>) -> VNode;
+    fn render(&self, ctx: &mut RenderContext<Self>) -> VNode;
 
     fn on_property_change(
         &mut self,
@@ -201,8 +201,8 @@ impl<C: Component> DynamicComponent for C {
             let c = C::init(real_props, &mut context);
             (c, context.take_effects())
         };
-        let ctx = RenderContext::new(context);
-        let mut vnode = component.render(ctx);
+        let mut ctx = RenderContext::new(context);
+        let mut vnode = component.render(&mut ctx);
 
         // TODO: re-use code in self.dyn_render() to prevent duplication.
         let mut render_ctx = DomRenderContext::<C>::new(app, id);
@@ -230,8 +230,8 @@ impl<C: Component> DynamicComponent for C {
         state: &mut ComponentState,
     ) -> Option<web_sys::Node> {
         let context = Context::new(app, state.id);
-        let render_context = RenderContext::new(context);
-        let mut vnode = self.render(render_context);
+        let mut render_context = RenderContext::new(context);
+        let mut vnode = self.render(&mut render_context);
         let last_vnode = state.take_last_vnode();
 
         // trace!(?state, "dyn_render component {}", self.name());
@@ -347,7 +347,8 @@ pub trait PropComponent: Sized + 'static {
 
     fn init(props: &Self::Properties, ctx: &mut Context<Self::Msg>) -> Self;
     fn update(&mut self, msg: Self::Msg, props: &Self::Properties, ctx: &mut Context<Self::Msg>);
-    fn render(&self, props: &Self::Properties, ctx: RenderContext<PropWrapper<Self>>) -> VNode;
+    fn render(&self, props: &Self::Properties, ctx: &mut RenderContext<PropWrapper<Self>>)
+        -> VNode;
 
     fn on_property_change(
         &mut self,
@@ -393,7 +394,7 @@ impl<C: PropComponent + 'static> Component for PropWrapper<C> {
         C::update(&mut self.state, msg, &self.props, ctx)
     }
 
-    fn render(&self, ctx: RenderContext<Self>) -> VNode {
+    fn render(&self, ctx: &mut RenderContext<Self>) -> VNode {
         C::render(&self.state, &self.props, ctx)
     }
 

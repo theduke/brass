@@ -70,7 +70,7 @@ impl brass::Component for DropdownComponent {
         }
     }
 
-    fn render(&self, ctx: brass::RenderContext<Self>) -> VNode {
+    fn render(&self, ctx: &mut brass::RenderContext<Self>) -> VNode {
         let trigger_btn = super::button()
             .and((self.trigger.clone(), super::icon_fa("fas fa-angle-down")))
             .on_click(ctx.on_simple(|| Msg::Toggle));

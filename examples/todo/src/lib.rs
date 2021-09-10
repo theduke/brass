@@ -40,7 +40,7 @@ impl Component for Counter {
         self.count += msg;
     }
 
-    fn render(&self, ctx: RenderContext<Self>) -> brass::VNode {
+    fn render(&self, ctx: &mut RenderContext<Self>) -> brass::VNode {
         let increment = button()
             .and("+")
             .on(Event::Click, ctx.on(|_ev: web_sys::Event| 1));
@@ -117,7 +117,7 @@ impl brass::Component for App {
         }
     }
 
-    fn render(&self, ctx: RenderContext<Self>) -> brass::VNode {
+    fn render(&self, ctx: &mut RenderContext<Self>) -> brass::VNode {
         let editor = div().and(text("New Todo2: ")).and(
             input()
                 .attr(Attr::Value, &self.new_todo)

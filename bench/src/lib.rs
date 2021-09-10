@@ -44,7 +44,7 @@ impl brass::Component for Root {
         }
     }
 
-    fn render(&self, ctx: brass::RenderContext<Self>) -> brass::VNode {
+    fn render(&self, ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
         let add_1 = div_with(
             button()
                 .attr(Attr::Id, "add-1-element")
@@ -123,7 +123,7 @@ impl brass::Component for Item {
         }
     }
 
-    fn render(&self, ctx: brass::RenderContext<Self>) -> brass::VNode {
+    fn render(&self, ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
         let name = h1().and(&self.name);
         let counter = div().class("counter").and((
             span_with(&self.counter.to_string()),
