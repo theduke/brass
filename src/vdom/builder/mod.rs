@@ -192,6 +192,18 @@ impl TagBuilder {
         self
     }
 
+    pub fn on_click<C, M>(mut self, _ctx: &mut RenderContext<C>, mapper: M) -> Self
+    where
+        C: Component,
+        M: Fn() -> C::Msg + 'static,
+    {
+        self.tag.event_handlers.push(EventHandler::new(
+            Event::Click,
+            EventCallback::Closure(std::rc::Rc::new(move |_| Some(any_box(mapper())))),
+        ));
+        self
+    }
+
     pub fn on_event<C, F>(mut self, _ctx: &mut RenderContext<C>, event: Event, handler: F) -> Self
     where
         C: Component,
