@@ -126,6 +126,18 @@ impl EventCallback {
         }))
     }
 
+    pub fn callback_opt<F, T>(f: F, callback: Callback<T>) -> Self
+    where
+        F: Fn(web_sys::Event) -> Option<T> + 'static,
+    {
+        Self::Closure(Rc::new(move |ev: web_sys::Event| {
+            if let Some(msg) = f(ev) {
+                callback.send(msg);
+            }
+            None
+        }))
+    }
+
     pub(crate) fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
         match self {
             EventCallback::Fn(f) => f(event),

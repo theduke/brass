@@ -168,6 +168,17 @@ impl<M: 'static> Callback<M> {
 
     /// Construct an event handler that triggers this callback.
     ///
+    /// Must supply a mapper that transforms the DOM event into the expected
+    /// message.
+    pub fn on_opt<F>(self, mapper: F) -> EventCallback
+    where
+        F: Fn(web_sys::Event) -> Option<M> + 'static,
+    {
+        EventCallback::callback_opt(mapper, self)
+    }
+
+    /// Construct an event handler that triggers this callback.
+    ///
     /// Must supply a mapper that produces the expected message.
     pub fn on_simple<F>(self, f: F) -> EventCallback
     where
