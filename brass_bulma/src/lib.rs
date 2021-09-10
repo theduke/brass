@@ -38,8 +38,25 @@ impl Color {
     }
 }
 
+#[inline]
 pub fn box_() -> TagBuilder {
     div().class(s("box"))
+}
+
+#[inline]
+pub fn bulma_tag(content: Str) -> TagBuilder {
+    span().class(s("tag")).and(content)
+}
+
+#[inline]
+pub fn tags() -> TagBuilder {
+    div().class(s("tags"))
+}
+
+pub fn tag_with_delete(content: Str, callback: Callback<()>) -> TagBuilder {
+    bulma_tag(content)
+        .and(button_small().and_class("delete"))
+        .on_click(EventCallback::callback(|_| (), callback))
 }
 
 pub fn navbar_main() -> TagBuilder {
