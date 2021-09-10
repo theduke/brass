@@ -454,10 +454,10 @@ pub(crate) struct ComponentState {
     next_sibling: Option<web_sys::Node>,
     node: Option<web_sys::Node>,
 
-    // Effect guard for effects running for this component.
-    // (scheduled with Context::run_unguarded etc)
-    // Need to be cleaned up regularly.
-    // TODO: auto-remove these guards on drop ?
+    /// Effect guard for effects running for this component.
+    /// This only holds effects not manually handled by the component via
+    /// [`EffectGuard`], which is the case for effects created with the various
+    /// "_ungarded" methods, like [`Context::run_unguarded`].
     effect_guards: Vec<EffectGuard>,
 }
 
