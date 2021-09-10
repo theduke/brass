@@ -143,7 +143,7 @@ impl<C: Component> DynamicComponent for C {
         let mut vnode = component.render(&mut ctx);
 
         // TODO: re-use code in self.dyn_render() to prevent duplication.
-        let mut render_ctx = DomRenderContext::<C>::new(app, id);
+        let mut render_ctx = DomRenderContext::new(app, id);
         let node = render_ctx.patch(&parent, next_sibling.as_ref(), VNode::Empty, &mut vnode);
 
         // Call Component::on_render hook.
@@ -174,7 +174,7 @@ impl<C: Component> DynamicComponent for C {
 
         // trace!(?state, "dyn_render component {}", self.name());
 
-        let mut render_ctx = DomRenderContext::<C>::new(app, state.id());
+        let mut render_ctx = DomRenderContext::new(app, state.id());
 
         let node = render_ctx.patch(
             &state.parent,

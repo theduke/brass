@@ -6,7 +6,7 @@ use wasm_bindgen::JsCast;
 use super::{EventCallback, OptionalElement, OptionalNode, VComponent, VNode, VRef, VTag};
 use crate::{
     app::{AppState, ComponentEventHandler, ComponentId, EventCallbackId},
-    dom, Component, Str,
+    dom, Str,
 };
 
 fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &Str, elem: &web_sys::Element) {
@@ -28,19 +28,14 @@ fn set_attribute(tag: dom::Tag, attribute: dom::Attr, value: &Str, elem: &web_sy
     }
 }
 
-pub struct DomRenderContext<'a, C: Component> {
+pub struct DomRenderContext<'a> {
     app: &'a mut AppState,
     component_id: ComponentId,
-    _marker: std::marker::PhantomData<&'a C>,
 }
 
-impl<'a, C: Component> DomRenderContext<'a, C> {
+impl<'a> DomRenderContext<'a> {
     pub(crate) fn new(app: &'a mut AppState, component_id: ComponentId) -> Self {
-        Self {
-            app,
-            component_id,
-            _marker: std::marker::PhantomData,
-        }
+        Self { app, component_id }
     }
 
     fn create_element(&self, tag: dom::Tag) -> web_sys::Element {
