@@ -6,6 +6,8 @@ pub use node::*;
 mod builder;
 pub use builder::*;
 
+pub mod event;
+
 use std::rc::Rc;
 
 #[derive(Clone)]

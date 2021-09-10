@@ -1,10 +1,14 @@
 use crate::{
+    any::any_box,
     app::EventCallbackId,
     dom::{Attr, Event, Tag},
-    Component, Shared, Str,
+    Callback, Component, RenderContext, Shared, Str,
 };
 
-use super::{EventCallback, EventHandler, Ref, VComponent, VNode, VRef, VTag, VText};
+use super::{
+    event::{DomEvent, EventHandlerFn},
+    EventCallback, EventHandler, Ref, VComponent, VNode, VRef, VTag, VText,
+};
 
 pub fn component<C: Component>(props: C::Properties) -> VNode {
     VNode::Component(VComponent::new::<C>(props))
@@ -177,18 +181,70 @@ impl TagBuilder {
         VNode::Tag(self.tag)
     }
 
-    pub fn on(mut self, event: Event, callback: EventCallback) -> Self {
+    pub fn on<C, E, H, X>(mut self, _ctx: &mut RenderContext<C>, handler: H) -> Self
+    where
+        E: DomEvent,
+        C: Component,
+        H: EventHandlerFn<E, C::Msg, X>,
+    {
+        let ev_handler = handler.into_handler();
+        self.tag.event_handlers.push(ev_handler);
+        self
+    }
+
+    pub fn on_event<C, F>(mut self, _ctx: &mut RenderContext<C>, event: Event, handler: F) -> Self
+    where
+        C: Component,
+        F: Fn(web_sys::Event) -> C::Msg + 'static,
+    {
         self.tag.event_handlers.push(EventHandler {
             event,
-            callback,
+            callback: EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
+                let msg = handler(ev);
+                Some(Box::new(msg))
+            })),
             callback_id: EventCallbackId::new_null(),
         });
         self
     }
 
-    pub fn on_click(self, callback: EventCallback) -> Self {
-        self.on(Event::Click, callback)
+    pub fn on_event_opt<C, F>(
+        mut self,
+        _ctx: &mut RenderContext<C>,
+        event: Event,
+        handler: F,
+    ) -> Self
+    where
+        C: Component,
+        F: Fn(web_sys::Event) -> Option<C::Msg> + 'static,
+    {
+        self.tag.event_handlers.push(EventHandler {
+            event,
+            callback: EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
+                handler(ev).map(any_box)
+            })),
+            callback_id: EventCallbackId::new_null(),
+        });
+        self
     }
+
+    pub fn on_callback<E, M, H, X>(mut self, mapper: H, callback: &Callback<M>) -> Self
+    where
+        E: DomEvent,
+        M: 'static,
+        H: EventHandlerFn<E, M, X>,
+    {
+        let ev_handler = mapper.into_handler_callback(callback);
+        self.tag.event_handlers.push(ev_handler);
+        self
+    }
+
+    // pub fn on_click<C, F>(self, ctx: &mut ) -> Self
+    //     where C: Component,
+    //           F: Fn() -> C::Msg
+    // {
+    //     self.on(Event::Click, callback)
+    // }
 
     pub fn build_ref(self, vref: &Ref) -> VNode {
         VNode::Ref(VRef {

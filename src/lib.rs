@@ -15,7 +15,7 @@ pub use self::{
         ShouldRender,
     },
     strings::Str,
-    vdom::{Shared, VNode},
+    vdom::{EventHandler, Shared, VNode},
 };
 
 /// Enable the properties of a Component to be used when building the virtual

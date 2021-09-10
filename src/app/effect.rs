@@ -1,8 +1,8 @@
 use std::{cell::Cell, pin::Pin, rc::Rc};
 
-use crate::{any::AnyBox, vdom::EventCallback};
+use crate::any::AnyBox;
 
-use super::handle::ComponentAppHandle;
+use super::{handle::ComponentAppHandle, ComponentId};
 
 #[derive(Debug)]
 #[must_use]
@@ -115,6 +115,12 @@ pub struct Callback<M: 'static> {
     mapper: Option<AnyMapper<M>>,
 }
 
+impl<M: 'static> Callback<M> {
+    pub fn mapper(&self) -> Option<&AnyMapper<M>> {
+        self.mapper.as_ref()
+    }
+}
+
 impl<M: 'static> Clone for Callback<M> {
     fn clone(&self) -> Self {
         Self {
@@ -130,6 +136,10 @@ impl<M: 'static> Callback<M> {
             handle,
             mapper: None,
         }
+    }
+
+    pub(crate) fn component_id(&self) -> ComponentId {
+        self.handle.component_id()
     }
 
     pub fn send(&self, value: M) {
@@ -153,37 +163,5 @@ impl<M: 'static> Callback<M> {
             handle: self.handle.clone(),
             mapper: Some(nested_mapper),
         }
-    }
-
-    /// Construct an event handler that triggers this callback.
-    ///
-    /// Must supply a mapper that transforms the DOM event into the expected
-    /// message.
-    pub fn on<F>(self, mapper: F) -> EventCallback
-    where
-        F: Fn(web_sys::Event) -> M + 'static,
-    {
-        EventCallback::callback(mapper, self)
-    }
-
-    /// Construct an event handler that triggers this callback.
-    ///
-    /// Must supply a mapper that transforms the DOM event into the expected
-    /// message.
-    pub fn on_opt<F>(self, mapper: F) -> EventCallback
-    where
-        F: Fn(web_sys::Event) -> Option<M> + 'static,
-    {
-        EventCallback::callback_opt(mapper, self)
-    }
-
-    /// Construct an event handler that triggers this callback.
-    ///
-    /// Must supply a mapper that produces the expected message.
-    pub fn on_simple<F>(self, f: F) -> EventCallback
-    where
-        F: Fn() -> M + 'static,
-    {
-        EventCallback::callback(move |_ev: web_sys::Event| f(), self)
     }
 }

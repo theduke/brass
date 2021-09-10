@@ -1,6 +1,6 @@
 use brass::{
     dom::Attr,
-    vdom::{self, div, Ref},
+    vdom::{self, div, event::ClickEvent, Ref},
     Callback,
 };
 
@@ -85,17 +85,13 @@ impl brass::Component for CallbackComp {
         self.count += msg;
     }
 
-    fn render(&self, ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
-        let callback = self.callback.clone();
+    fn render(&self, _ctx: &mut brass::RenderContext<Self>) -> brass::VNode {
         div()
             .and((
                 div().class("callback-test").and(self.count.to_string()),
                 vdom::button()
                     .class("callback-test-trigger")
-                    .on_click(ctx.on_opt(move |_ev: web_sys::Event| {
-                        callback.send(1);
-                        None
-                    })),
+                    .on_callback(|_: ClickEvent| 1, &self.callback),
             ))
             .build()
     }

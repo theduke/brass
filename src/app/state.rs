@@ -2,7 +2,11 @@ use std::collections::HashMap;
 
 use wasm_bindgen::JsCast;
 
-use crate::{any::AnyBox, vdom::VComponent, Component};
+use crate::{
+    any::AnyBox,
+    vdom::{self, VComponent},
+    Component,
+};
 
 use super::{
     component::ComponentConstructor,
@@ -174,15 +178,29 @@ impl AppState {
         self.render_component(ComponentId::ROOT);
     }
 
-    pub fn handle_event(
-        &mut self,
-        callback_id: EventCallbackId,
-        event: web_sys::Event,
-    ) -> Option<()> {
-        let handler = self.event_manager.get_handler(callback_id)?;
-        let msg = handler.invoke(event)?;
-        self.update_component(handler.component_id(), msg);
-        None
+    pub fn handle_event(&mut self, callback_id: EventCallbackId, event: web_sys::Event) {
+        let handler = if let Some(h) = self.event_manager.get_handler(callback_id) {
+            h
+        } else {
+            tracing::error!("Tried to handle an invalid callback id");
+            return;
+        };
+
+        match handler.handler() {
+            vdom::EventCallback::Closure(f) => {
+                if let Some(msg) = f(event) {
+                    self.update_component(handler.component_id(), msg);
+                }
+            }
+            vdom::EventCallback::ComponentCallback {
+                component_id,
+                handler,
+            } => {
+                if let Some(msg) = handler(event) {
+                    self.update_component(*component_id, msg);
+                }
+            }
+        }
     }
 
     /// Build a new AppState.

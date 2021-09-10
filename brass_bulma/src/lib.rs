@@ -2,13 +2,15 @@ mod dropdown;
 
 use std::{collections::HashSet, rc::Rc};
 
-use wasm_bindgen::JsCast;
-
 pub use dropdown::Dropdown;
 
 use brass::{
-    dom::{Attr, Event, Tag},
-    vdom::{self, div, s, DomExtend, EventCallback, Render, TagBuilder},
+    dom::{Attr, Tag},
+    vdom::{
+        self, div,
+        event::{ChangeEvent, ClickEvent, InputEvent, KeyDownEvent},
+        s, DomExtend, Render, TagBuilder,
+    },
     Callback, Str, VNode,
 };
 use vdom::{span, tag};
@@ -53,10 +55,10 @@ pub fn tags() -> TagBuilder {
     div().class(s("tags"))
 }
 
-pub fn tag_with_delete(content: Str, callback: Callback<()>) -> TagBuilder {
+pub fn tag_with_delete(content: Str, callback: &Callback<()>) -> TagBuilder {
     bulma_tag(content)
         .and(button_small().and_class("delete"))
-        .on_click(EventCallback::callback(|_| (), callback))
+        .on_callback(|_: ClickEvent| (), callback)
 }
 
 pub fn navbar_main() -> TagBuilder {
@@ -219,18 +221,17 @@ pub fn icon_fa_left(icon: impl Into<Str>) -> TagBuilder {
         .and(tag(Tag::I).class(icon))
 }
 
-pub fn modal<C: DomExtend>(content: C, on_close: Callback<()>) -> TagBuilder {
-    let on_close_ev = EventCallback::callback(|_| (), on_close);
+pub fn modal<C: DomExtend>(content: C, on_close: &Callback<()>) -> TagBuilder {
     let bg = div()
         .class(s("modal-background"))
-        .on(Event::Click, on_close_ev.clone());
+        .on_callback(|_: ClickEvent| (), &on_close);
 
     let inner = div().class(s("modal-content")).and(content);
 
     let close = button()
         .class(s("modal-close is-large"))
         .attr(Attr::AriaLabel, "close")
-        .on(Event::Click, on_close_ev.clone());
+        .on_callback(|_: ClickEvent| (), on_close);
 
     div()
         .class(s("modal is-active"))
@@ -239,13 +240,18 @@ pub fn modal<C: DomExtend>(content: C, on_close: Callback<()>) -> TagBuilder {
         .and(close)
 }
 
-pub fn file_input(label: &str, on_input: EventCallback, disabled: bool, multi: bool) -> TagBuilder {
+pub fn file_input(
+    label: &str,
+    on_input: &Callback<String>,
+    disabled: bool,
+    multi: bool,
+) -> TagBuilder {
     let input = vdom::input()
         .class(s("file-input"))
         .attr(Attr::Type, "file")
         .attr_if(disabled, Attr::Disabled, "")
         .attr_if(multi, Attr::Multiple, "")
-        .on(Event::Input, on_input);
+        .on_callback(|ev: InputEvent| ev.value(), on_input);
     let icon = span()
         .class(s("file-icon"))
         .and(vdom::tag(Tag::I).class(s("fas fa-upload")));
@@ -372,7 +378,7 @@ pub struct Input {
     pub color: Color,
     pub placeholder: Option<Str>,
     pub value: Str,
-    pub on_input: EventCallback,
+    pub on_input: Callback<String>,
 }
 
 impl Render for Input {
@@ -381,7 +387,7 @@ impl Render for Input {
             .and_class(self.color.as_class())
             .attr(Attr::Type, self._type)
             .attr(Attr::Value, self.value)
-            .on(Event::Input, self.on_input);
+            .on_callback(|ev: InputEvent| ev.value(), &self.on_input);
 
         if let Some(placeholder) = self.placeholder {
             inp.add_attr(Attr::Placeholder, placeholder);
@@ -395,8 +401,8 @@ pub struct Textarea {
     pub color: Color,
     pub placeholder: Option<Str>,
     pub value: Str,
-    pub on_input: EventCallback,
-    pub on_keydown: Option<EventCallback>,
+    pub on_input: Callback<String>,
+    pub on_keydown: Option<Callback<KeyDownEvent>>,
     pub style_raw: Option<Str>,
 }
 
@@ -406,10 +412,10 @@ impl Render for Textarea {
             .and_class(self.color.as_class())
             .and_class("textarea")
             .attr(Attr::Value, self.value)
-            .on(Event::Input, self.on_input);
+            .on_callback(|ev: InputEvent| ev.value(), &self.on_input);
 
         if let Some(handler) = self.on_keydown {
-            area = area.on(Event::KeyDown, handler);
+            area = area.on_callback(|ev: KeyDownEvent| ev, &handler);
         }
 
         if let Some(placeholder) = self.placeholder {
@@ -454,26 +460,18 @@ impl<T: PartialEq + Eq + Clone> Render for Select<T> {
         });
 
         let opts = self.options.clone();
-        // TODO: this clone is redundant.
-        let callback = self.on_select.clone();
-        let select = vdom::select().and(empty_option).and_iter(options).on(
-            Event::Change,
-            EventCallback::Closure(std::rc::Rc::new(move |ev: web_sys::Event| {
-                let value = ev
-                    .target()?
-                    .dyn_ref::<web_sys::HtmlSelectElement>()?
-                    .value();
-
-                if value == "" {
-                    callback.send(None);
-                } else {
-                    let index = value.parse::<usize>().ok()?;
+        let select = vdom::select()
+            .and(empty_option)
+            .and_iter(options)
+            .on_callback(
+                move |ev: ChangeEvent| {
+                    let raw_value = ev.value()?;
+                    let index = raw_value.parse::<usize>().ok()?;
                     let value = opts.get(index)?.value.clone();
-                    callback.send(Some(value));
-                }
-                None
-            })),
-        );
+                    Some(value)
+                },
+                &self.on_select,
+            );
 
         div().class(s("select")).and(select).build()
     }
@@ -496,19 +494,13 @@ impl<'a, T: PartialEq + Eq + Clone + std::hash::Hash> Render for TagSelect<'a, T
                 "tag is-clickable is-unselectable"
             };
 
-            // TODO: use a single event handler that reads the index from
-            // a data="" attribute to improve performance.
-            let on_select = self.on_select.clone();
             let value = opt.value.clone();
 
             span()
                 .class(class)
                 .attr(Attr::Data, index.to_string())
                 .and(opt.label.clone())
-                .on_click(EventCallback::Closure(Rc::new(move |_| {
-                    on_select.send(value.clone());
-                    None
-                })))
+                .on_callback(move |_: ClickEvent| value.clone(), &self.on_select)
         });
 
         div().class(s("tags")).and_iter(options).build()
@@ -518,7 +510,7 @@ impl<'a, T: PartialEq + Eq + Clone + std::hash::Hash> Render for TagSelect<'a, T
 pub struct FileInput {
     pub label: Str,
     pub multi: bool,
-    pub on_change: EventCallback,
+    pub on_change: Callback<ChangeEvent>,
 }
 
 impl DomExtend for FileInput {
@@ -527,7 +519,7 @@ impl DomExtend for FileInput {
             .class(s("file-input"))
             .attr(Attr::Type, "file")
             .attr_toggle_if(self.multi, Attr::Multiple)
-            .on(Event::Change, self.on_change);
+            .on_callback(|ev: ChangeEvent| ev, &self.on_change);
         let cta = vdom::span().class(s("file-cta")).and((
             vdom::span()
                 .class(s("file-icon"))
@@ -545,14 +537,14 @@ pub struct Checkbox {
     pub color: Color,
     pub label: Str,
     pub value: bool,
-    pub on_input: EventCallback,
+    pub on_input: Callback<InputEvent>,
 }
 
 impl Checkbox {
     pub fn render(self) -> TagBuilder {
         let inp = vdom::input()
             .attr(Attr::Type, "checkbox")
-            .on(Event::Input, self.on_input);
+            .on_callback(|ev: InputEvent| ev, &self.on_input);
         let lbl = vdom::label().class(s("checkbox")).and(inp).and(self.label);
         let ctrl = control().and(lbl);
         field().and(ctrl)

@@ -112,6 +112,10 @@ impl ComponentAppHandle {
         Self { component_id, app }
     }
 
+    pub(crate) fn component_id(&self) -> ComponentId {
+        self.component_id
+    }
+
     pub fn send_message(&self, msg: AnyBox) {
         self.app.send_message(self.component_id, msg);
     }

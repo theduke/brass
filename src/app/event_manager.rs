@@ -1,6 +1,6 @@
 use wasm_bindgen::JsCast;
 
-use crate::{any::AnyBox, vdom::EventCallback};
+use crate::vdom::EventCallback;
 
 use super::{component_manager::ComponentId, handle::AppHandle};
 
@@ -20,7 +20,7 @@ impl EventCallbackId {
 }
 
 #[derive(Clone)]
-pub struct ComponentEventHandler {
+pub(crate) struct ComponentEventHandler {
     id: ComponentId,
     handler: EventCallback,
 }
@@ -35,9 +35,8 @@ impl ComponentEventHandler {
         self.id
     }
 
-    #[inline]
-    pub fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
-        self.handler.invoke(event)
+    pub fn handler(&self) -> &EventCallback {
+        &self.handler
     }
 }
 
@@ -76,6 +75,7 @@ impl EventManager {
             .map(|x| x.as_ref().unchecked_ref())
     }
 
+    // TODO: rename to build_callback
     pub(crate) fn build(
         &mut self,
         handler: ComponentEventHandler,
@@ -94,13 +94,14 @@ impl EventManager {
             self.handlers.push(handler);
             {
                 let id = id.clone();
-                let component = self
+                let app_handle = self
                     .app
+                    // TODO: figure out why this needs to be an option...
                     .as_ref()
-                    .expect("Uninitialized component in EventManager")
+                    .expect("AppHandle not initialized")
                     .clone();
                 let boxed: Box<dyn Fn(web_sys::Event)> = Box::new(move |event| {
-                    component.handle_event(id.clone(), event);
+                    app_handle.handle_event(id.clone(), event);
                 });
                 let closure = wasm_bindgen::closure::Closure::wrap(boxed);
                 self.closures.push(closure);

@@ -1,9 +1,13 @@
+use brass::vdom::event::ClickEvent;
+use brass::vdom::event::InputEvent;
+use brass::vdom::event::KeyDownEvent;
+
 use brass::RenderContext;
 use wasm_bindgen::prelude::*;
 use wasm_bindgen::JsCast;
 
 use brass::{
-    dom::{Attr, Event},
+    dom::Attr,
     vdom::{button, component, div, div_with, h2, h4, input, li, span_with, text, ul},
     Component, Context, ShouldRender,
 };
@@ -41,9 +45,7 @@ impl Component for Counter {
     }
 
     fn render(&self, ctx: &mut RenderContext<Self>) -> brass::VNode {
-        let increment = button()
-            .and("+")
-            .on(Event::Click, ctx.on(|_ev: web_sys::Event| 1));
+        let increment = button().and("+").on(ctx, |_: ClickEvent| 1);
         div()
             .and("Counter: ")
             .and(self.count.to_string())
@@ -121,26 +123,16 @@ impl brass::Component for App {
         let editor = div().and(text("New Todo2: ")).and(
             input()
                 .attr(Attr::Value, &self.new_todo)
-                .on(
-                    Event::Input,
-                    ctx.on(|ev: web_sys::Event| {
-                        let elem: web_sys::HtmlInputElement =
-                            ev.current_target().unwrap().unchecked_into();
-                        let value = elem.value();
-                        Msg::Change(value)
-                    }),
-                )
-                .on(
-                    Event::KeyDown,
-                    ctx.on_opt(|ev: web_sys::Event| {
-                        let kev: web_sys::KeyboardEvent = ev.unchecked_into();
-                        if kev.code() == "Enter" {
-                            Some(Msg::Add)
-                        } else {
-                            None
-                        }
-                    }),
-                ),
+                .on(ctx, |ev: InputEvent| -> Option<Msg> {
+                    ev.value().map(Msg::Change)
+                })
+                .on(ctx, |ev: KeyDownEvent| {
+                    if ev.code() == "Enter" {
+                        Some(Msg::Add)
+                    } else {
+                        None
+                    }
+                }),
         );
 
         let mut todos = div().and(h4().and("Your Todos:"));
@@ -157,10 +149,7 @@ impl brass::Component for App {
                 let checkbox = input()
                     .attr(Attr::Type, "checkbox")
                     .attr(Attr::Checked, checked)
-                    .on(
-                        Event::Click,
-                        ctx.on(move |_ev: web_sys::Event| Msg::ToggleDone(id)),
-                    );
+                    .on(ctx, move |_: ClickEvent| Msg::ToggleDone(id));
 
                 let label = if todo.done {
                     span_with(&todo.task).attr(Attr::Style, "text-decoration: line-through;")

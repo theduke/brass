@@ -3,7 +3,7 @@ use std::{cell::RefCell, rc::Rc};
 use crate::{
     any::AnyBox,
     app::{ComponentConstructor, ComponentId, EventCallbackId},
-    dom, Callback, Component, Str,
+    dom, Component, Str,
 };
 
 /// Wrapper around a [`web_sys::Node`].
@@ -99,13 +99,13 @@ pub type StaticEventHandler = fn(web_sys::Event) -> Option<AnyBox>;
 // TODO: use box instead?
 pub type ClosureEventHandler = Rc<dyn Fn(web_sys::Event) -> Option<AnyBox>>;
 
-// FIXME: make this private with a wrapper struct to prevent mis-use.
-// Right now it's possible to construct an invalid callback that returns the
-// wrong message type for a component, leading to a runtime panic.
 #[derive(Clone)]
-pub enum EventCallback {
-    Fn(StaticEventHandler),
+pub(crate) enum EventCallback {
     Closure(ClosureEventHandler),
+    ComponentCallback {
+        component_id: ComponentId,
+        handler: ClosureEventHandler,
+    },
 }
 
 impl std::fmt::Debug for EventCallback {
@@ -114,63 +114,56 @@ impl std::fmt::Debug for EventCallback {
     }
 }
 
-impl EventCallback {
-    pub fn callback<F, T>(f: F, callback: Callback<T>) -> Self
-    where
-        F: Fn(web_sys::Event) -> T + 'static,
-    {
-        Self::Closure(Rc::new(move |ev: web_sys::Event| {
-            let value = f(ev);
-            callback.send(value);
-            None
-        }))
-    }
+// impl EventCallback {
+//     pub(crate) fn callback<F, T>(f: F, callback: Callback<T>) -> Self
+//     where
+//         F: Fn(web_sys::Event) -> T + 'static,
+//     {
+//         Self::Closure(Rc::new(move |ev: web_sys::Event| {
+//             let value = f(ev);
+//             callback.send(value);
+//             None
+//         }))
+//     }
 
-    pub fn callback_opt<F, T>(f: F, callback: Callback<T>) -> Self
-    where
-        F: Fn(web_sys::Event) -> Option<T> + 'static,
-    {
-        Self::Closure(Rc::new(move |ev: web_sys::Event| {
-            if let Some(msg) = f(ev) {
-                callback.send(msg);
-            }
-            None
-        }))
-    }
-
-    pub(crate) fn invoke(&self, event: web_sys::Event) -> Option<AnyBox> {
-        match self {
-            EventCallback::Fn(f) => f(event),
-            EventCallback::Closure(f) => (f)(event),
-        }
-    }
-}
+//     pub(crate) fn callback_opt<F, T>(f: F, callback: Callback<T>) -> Self
+//     where
+//         F: Fn(web_sys::Event) -> Option<T> + 'static,
+//     {
+//         Self::Closure(Rc::new(move |ev: web_sys::Event| {
+//             if let Some(msg) = f(ev) {
+//                 callback.send(msg);
+//             }
+//             None
+//         }))
+//     }
+// }
 
 impl PartialEq for EventCallback {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (EventCallback::Fn(f1), EventCallback::Fn(f2)) => f1 == f2,
-            _ => false,
-        }
+    fn eq(&self, _other: &Self) -> bool {
+        // TODO: remove this impl?  We can't compare the insides anyway.
+        // Or we could compare based on Rc::ptr_eq and provide some way to
+        // re-use event handlers.
+        false
     }
 }
 
 #[derive(Clone, Debug)]
-pub(super) struct EventHandler {
+pub struct EventHandler {
     pub(super) event: dom::Event,
-    pub(super) callback: EventCallback,
+    pub(in crate::vdom) callback: EventCallback,
     pub(super) callback_id: EventCallbackId,
 }
 
-// impl EventHandler {
-//     pub(crate) fn new(event: dom::Event, handler: EventCallback) -> Self {
-//         Self {
-//             event,
-//             callback: handler,
-//             callback_id: EventCallbackId::new_null(),
-//         }
-//     }
-// }
+impl EventHandler {
+    pub(crate) fn new(event: dom::Event, handler: EventCallback) -> Self {
+        Self {
+            event,
+            callback: handler,
+            callback_id: EventCallbackId::new_null(),
+        }
+    }
+}
 
 impl PartialEq for EventHandler {
     fn eq(&self, other: &Self) -> bool {

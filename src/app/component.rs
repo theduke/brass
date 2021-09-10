@@ -1,12 +1,6 @@
 // mod state;
 
-use std::rc::Rc;
-
-use crate::{
-    any::{any_box, AnyBox},
-    vdom::render::DomRenderContext,
-    Callback, VNode,
-};
+use crate::{any::AnyBox, vdom::render::DomRenderContext, Callback, VNode};
 
 use super::{
     component_manager::ComponentId, context::Context, effect::EffectGuard, state::AppState,
@@ -51,62 +45,6 @@ impl<'a, C: Component> RenderContext<'a, C> {
         F: Fn(T) -> C::Msg + 'static,
     {
         self.context.callback_map(mapper)
-    }
-
-    pub fn on<E, F>(&self, handler: F) -> crate::vdom::EventCallback
-    where
-        E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
-        F: Fn(E) -> C::Msg + 'static,
-    {
-        crate::vdom::EventCallback::Closure(Rc::new(move |ev: web_sys::Event| {
-            // TODO This expect can basically never happen due to the trait bound on E.
-            // We could use JsCast::unchecked_into instead.
-            // Keep this now just to be safe.
-            match wasm_bindgen::JsCast::dyn_into(ev) {
-                Ok(ev) => {
-                    let msg = handler(ev);
-                    Some(any_box(msg))
-                }
-                Err(err) => {
-                    tracing::error!(?err, "Event callback received invalid event type");
-                    None
-                }
-            }
-        }))
-    }
-
-    pub fn on_opt<E, F>(&self, handler: F) -> crate::vdom::EventCallback
-    where
-        E: wasm_bindgen::JsCast + AsRef<web_sys::Event>,
-        F: (Fn(E) -> Option<C::Msg>) + 'static,
-    {
-        crate::vdom::EventCallback::Closure(Rc::new(move |ev: web_sys::Event| {
-            // TODO This expect can basically never happen due to the trait bound on E.
-            // We could use JsCast::unchecked_into instead.
-            // Keep this now just to be safe.
-            match wasm_bindgen::JsCast::dyn_into(ev) {
-                Ok(ev) => {
-                    if let Some(msg) = handler(ev) {
-                        Some(any_box(msg))
-                    } else {
-                        None
-                    }
-                }
-                Err(err) => {
-                    tracing::error!(?err, "Event callback received invalid event type");
-                    None
-                }
-            }
-        }))
-    }
-
-    pub fn on_simple<F>(&self, handler: F) -> crate::vdom::EventCallback
-    where
-        F: Fn() -> C::Msg + 'static,
-    {
-        crate::vdom::EventCallback::Closure(Rc::new(move |_ev: web_sys::Event| {
-            Some(any_box(handler()))
-        }))
     }
 }
 

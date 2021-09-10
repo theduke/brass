@@ -1,6 +1,6 @@
 use brass::{
-    vdom::{div, DomExtend, EventCallback},
-    VNode,
+    vdom::{div, event::ClickEvent, DomExtend},
+    Callback, VNode,
 };
 
 pub type DropdownContentRenderer = Box<dyn Fn() -> VNode>;
@@ -10,12 +10,14 @@ pub struct Dropdown<T, C> {
     pub content: C,
     pub is_active: bool,
     pub is_hoverable: bool,
-    pub on_toggle: EventCallback,
+    pub on_toggle: Callback<()>,
 }
 
 impl<T: DomExtend, C: DomExtend> DomExtend for Dropdown<T, C> {
     fn extend(self, parent: &mut brass::vdom::TagBuilder) {
-        let trigger_btn = super::button().and(self.trigger).on_click(self.on_toggle);
+        let trigger_btn = super::button()
+            .and(self.trigger)
+            .on_callback(|_: ClickEvent| (), &self.on_toggle);
 
         let trigger = div().class("dropdown-trigger").and(trigger_btn);
 
@@ -73,7 +75,7 @@ impl brass::Component for DropdownComponent {
     fn render(&self, ctx: &mut brass::RenderContext<Self>) -> VNode {
         let trigger_btn = super::button()
             .and((self.trigger.clone(), super::icon_fa("fas fa-angle-down")))
-            .on_click(ctx.on_simple(|| Msg::Toggle));
+            .on(ctx, |_: ClickEvent| Msg::Toggle);
 
         let trigger = div().class("dropdown-trigger").and(trigger_btn);
 
