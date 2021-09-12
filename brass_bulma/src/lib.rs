@@ -1,5 +1,8 @@
 mod dropdown;
 
+mod modal;
+pub use modal::Modal;
+
 use std::{collections::HashSet, rc::Rc};
 
 pub use dropdown::Dropdown;
