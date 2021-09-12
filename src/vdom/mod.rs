@@ -29,6 +29,15 @@ impl<I, O> Func<I, O> {
     }
 }
 
+impl<I, O, F> From<F> for Func<I, O>
+where
+    F: Fn(I) -> O + 'static,
+{
+    fn from(f: F) -> Self {
+        Self::Dyn(Rc::new(f))
+    }
+}
+
 /// A render fn that can receives the given data as input and renders to a
 /// virtual DOM node.
 ///
