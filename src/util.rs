@@ -155,6 +155,35 @@ impl EventSubscription {
             closure,
         }
     }
+
+    pub fn subscribe_filtered<E, M, F>(
+        target: web_sys::EventTarget,
+        event: crate::dom::Event,
+        callback: crate::Callback<M>,
+        filter: F,
+    ) -> Self
+    where
+        E: wasm_bindgen::JsCast + 'static,
+        F: Fn(E) -> Option<M> + 'static,
+    {
+        let boxed: Box<dyn Fn(web_sys::Event)> = Box::new(move |event: web_sys::Event| {
+            if let Ok(typed_ev) = event.dyn_into::<E>() {
+                if let Some(msg) = filter(typed_ev) {
+                    callback.send(msg);
+                }
+            }
+        });
+        let closure = wasm_bindgen::closure::Closure::wrap(boxed);
+
+        target
+            .add_event_listener_with_callback(event.as_str(), closure.as_ref().unchecked_ref())
+            .unwrap();
+        Self {
+            event,
+            target,
+            closure,
+        }
+    }
 }
 
 impl Drop for EventSubscription {
