@@ -1,4 +1,5 @@
-make_str_enum! {
+
+crate::make_str_enum! {
     Tag {
         Address = 0 = "address",
         Article = 1 = "article",

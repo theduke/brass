@@ -1,0 +1,40 @@
+[package]
+name = "brass"
+version = "0.1.0"
+edition = "2018"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+futures = "0.3.17"
+futures-signals = "0.3.23"
+futures-util = "0.3.17"
+
+js-sys = "0.3.46"
+once_cell = "1.8.0"
+tracing = "0.1.29"
+wasm-bindgen = "0.2.69"
+wasm-bindgen-futures = "0.4.19"
+
+[dependencies.web-sys]
+version = "0.3.55"
+features = [
+    "Text",
+    "Element",
+    "Node",
+    "Window",
+    "History",
+    "Location",
+    "Document",
+    "Event",
+    "InputEvent",
+    "MouseEvent",
+    "HtmlInputElement",
+    "HtmlSelectElement",
+    "HtmlTextAreaElement",
+    "KeyboardEvent",
+    "Performance",
+    "DomTokenList",
+    "CssStyleDeclaration", 
+    "SvgElement",
+]

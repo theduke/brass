@@ -1,5 +1,7 @@
 #![recursion_limit = "512"]
 
+pub mod v2;
+
 mod any;
 mod strings;
 

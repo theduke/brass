@@ -1,4 +1,4 @@
-mod string_tables;
+pub(crate) mod string_tables;
 pub use string_tables::setup;
 
 use wasm_bindgen::JsCast;

@@ -1,4 +1,5 @@
-make_str_enum! {
+
+crate::make_str_enum! {
     Event {
         Cached = 0 = "cached",
         Error = 1 = "error",

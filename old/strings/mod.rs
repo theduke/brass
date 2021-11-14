@@ -256,24 +256,28 @@ impl std::hash::Hash for Str {
 }
 
 impl<'a> From<&'a str> for Str {
+    #[inline]
     fn from(v: &'a str) -> Self {
         SmallStr::from_str(v)
     }
 }
 
 impl<'a> From<&'a String> for Str {
+    #[inline]
     fn from(v: &'a String) -> Self {
         SmallStr::from_str(v)
     }
 }
 
 impl From<Rc<str>> for Str {
+    #[inline]
     fn from(s: Rc<str>) -> Self {
         Self(Repr::Shared(s))
     }
 }
 
 impl From<String> for Str {
+    #[inline]
     fn from(s: String) -> Self {
         Self(Repr::String(s))
     }

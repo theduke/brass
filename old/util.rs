@@ -87,6 +87,8 @@ impl std::future::Future for Timeout {
     ) -> std::task::Poll<Self::Output> {
         let s = self.get_mut();
 
+        // FIXME: make it possible to cancel the timeout.
+
         if s.closure.is_none() {
             let delay = (s.target - now()) as i32;
             if delay < 0 {

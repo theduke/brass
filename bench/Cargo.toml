@@ -12,5 +12,5 @@ crate-type = ["cdylib"]
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-brass = { path = ".." }
+brass = { path = "../brass" }
 wasm-bindgen = "0.2.75"

@@ -31,6 +31,10 @@ export function __brass_elem_set_attr_str_value(elem, attr, value) {
     elem.setAttribute(attr, value);
 }
 
+export function __brass_elem_remove_attr(elem, attr) {
+    elem.removeAttribute(attr);
+}
+
 export function __brass_create_element(tag) {
     return document.createElement(tag);
 }
@@ -38,6 +42,15 @@ export function __brass_create_element(tag) {
 export function __brass_add_event_listener(elem, event, listener) {
     elem.addEventListener(event, listener);
 }
+
+export function __brass_create_empty_node() {
+    return document.createComment('')
+}
+
+export function __brass_create_text_node(value) {
+    return document.createTextNode(value)
+}
+
 ")]
 extern "C" {
     fn __brass_elem_set_attr_js_value(
@@ -52,6 +65,11 @@ extern "C" {
         value: &str,
     );
 
+    fn __brass_elem_remove_attr(
+        elem: &web_sys::Element,
+        attr: &js_sys::JsString,
+    );
+
     fn __brass_create_element(tag: &js_sys::JsString) -> wasm_bindgen::JsValue;
 
     fn __brass_add_event_listener(
@@ -59,6 +77,14 @@ extern "C" {
         event: &js_sys::JsString,
         listener: &js_sys::Function,
     );
+
+    fn __brass_create_empty_node() -> web_sys::Node; 
+    
+    fn __brass_create_text_node(value: &str) -> web_sys::Text; 
+}
+
+pub fn create_empty_node() -> web_sys::Node {
+    __brass_create_empty_node()
 }
 
 pub fn set_element_attribute(elem: &web_sys::Element, attr: Attr, value: &Str) {
@@ -70,6 +96,10 @@ pub fn set_element_attribute(elem: &web_sys::Element, attr: Attr, value: &Str) {
 
 pub fn create_element(tag: Tag) -> web_sys::Element {
     unsafe { __brass_create_element(TABLES.tag(tag)).unchecked_into() }
+}
+
+pub fn create_text(value: &str) -> web_sys::Text {
+    unsafe { __brass_create_text_node(value).unchecked_into() }
 }
 
 #[allow(unused)]
