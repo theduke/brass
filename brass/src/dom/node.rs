@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
 use futures::{
     future::{AbortHandle, Abortable},
@@ -20,7 +20,7 @@ use crate::{
     },
 };
 
-use super::{Attr, DomEvent, Event, Tag, Style};
+use super::{Attr, DomEvent, Event, Style, Tag};
 
 pub struct Node {
     pub elem: web_sys::Element,
@@ -827,6 +827,29 @@ where
 {
     fn apply(self, tag: &mut TagBuilder) {
         tag.add_child_signal(self.0);
+    }
+}
+
+pub struct ApplyFuture<F>(pub F);
+
+impl<F> Apply for ApplyFuture<F>
+where
+    F: std::future::Future<Output = TagBuilder> + 'static,
+{
+    fn apply(self, tag: &mut TagBuilder) {
+        let mut wrapper = builder::div();
+        let elem = wrapper.elem().clone();
+        let keeper: Rc<RefCell<Option<TagBuilder>>> = std::rc::Rc::new(RefCell::new(None));
+        wrapper.add_bind(keeper.clone());
+
+        let f = self.0;
+        wrapper.register_future(async move {
+            let child = f.await;
+            elem.append_child(child.elem()).ok();
+            *keeper.borrow_mut() = Some(child);
+        });
+
+        tag.add_child(wrapper);
     }
 }
 
