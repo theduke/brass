@@ -80,16 +80,15 @@ pub struct CachedString(pub &'static str);
 #[cfg(all(target_arch = "wasm", target_vendor = "unknown"))]
 impl From<&'static CachedString> for DomStr<'static> {
     fn from(c: &'static CachedString) -> Self {
-        static mut VALUE: once_cell::unsync::OnceCell<JsString> = once_cell::unsync::OnceCell::new();
+        static mut VALUE: once_cell::unsync::OnceCell<JsString> =
+            once_cell::unsync::OnceCell::new();
         // SAFETY:
         // static mut is only unsafe due to multi-threading.
         // WASM doesn't support multithreading (yet), and even once it does it
         // will require special primitives for shared memory.
         // Since the function is restricted to the wasm(32)-unknown-unknown
         // target, this code will not exist on multi-threaded targets.
-        let js = unsafe {
-            VALUE.get_or_init(|| JsValue::from(c.0).unchecked_into())
-        };
+        let js = unsafe { VALUE.get_or_init(|| JsValue::from(c.0).unchecked_into()) };
         DomStr::JsStr(js)
     }
 }
@@ -268,7 +267,6 @@ pub enum DomStr<'a> {
     JsStr(&'a JsString),
     JsString(JsString),
 }
-
 
 impl<'a> From<&'a str> for DomStr<'a> {
     fn from(value: &'a str) -> Self {

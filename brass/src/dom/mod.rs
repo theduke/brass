@@ -13,4 +13,4 @@ mod style;
 pub use style::Style;
 
 mod node;
-pub use node::{builder, Apply, Node, Render, TagBuilder, WithSignal};
+pub use node::{builder, Apply, ApplyFuture, Node, Render, TagBuilder, WithSignal};
