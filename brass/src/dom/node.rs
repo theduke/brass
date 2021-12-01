@@ -60,9 +60,6 @@ impl From<()> for View {
 impl View {
     pub(crate) fn attach(&self, parent: &web_sys::Element) {
         match self {
-            View::Empty => {
-
-            }
             View::Empty => {}
             View::Node(n) => {
                 n.attach(parent);
@@ -565,7 +562,7 @@ impl TagBuilder<()> {
 
     pub fn add_child_signal<T, S>(&mut self, signal: S)
     where
-        T: Into<Option<TagBuilder>>,
+        T: Into<View>,
         S: Signal<Item = T> + 'static,
     {
         let parent = self.elem().clone();
@@ -575,20 +572,35 @@ impl TagBuilder<()> {
         // TODO use custom binding for efficiency?
         parent.append_child(&marker).unwrap();
 
-        let mut current_node: Option<Node> = None;
-        let f = signal.for_each(move |opt| {
-            if let Some(tag) = opt.into() {
-                if let Some(old) = current_node.take() {
-                    parent.replace_child(&tag.node.node, &old.node).unwrap();
-                } else {
-                    parent.replace_child(&tag.node.node, &marker).unwrap();
+        let mut current_view = View::Empty;
+
+        let f = signal.for_each(move |view| {
+            current_view = match (view.into(), std::mem::take(&mut current_view)) {
+                (View::Empty, View::Empty) => View::Empty,
+                (View::Empty, View::Node(old)) => {
+                    parent.replace_child(&marker, &old.node).unwrap();
+                    View::Empty
                 }
-                current_node = Some(tag.node);
-            } else {
-                if let Some(current) = current_node.take() {
-                    parent.replace_child(&marker, &current.node).unwrap();
+                (View::Empty, View::Fragment(_)) => {
+                    todo!()
                 }
-            }
+                (View::Node(new_node), View::Empty) => {
+                    parent.replace_child(&new_node.node, &marker).unwrap();
+                    View::Node(new_node)
+                }
+                (View::Node(new_node), View::Node(old_node)) => {
+                    parent
+                        .replace_child(&new_node.node, &old_node.node)
+                        .unwrap();
+                    View::Node(new_node)
+                }
+                (View::Node(_new_node), View::Fragment(_f)) => {
+                    todo!()
+                }
+                (View::Fragment(_), _) => {
+                    todo!()
+                }
+            };
 
             async {}
         });
@@ -596,18 +608,10 @@ impl TagBuilder<()> {
     }
 
     #[inline]
-    pub fn child_signal<S>(mut self, signal: S) -> Self
+    pub fn child_signal<V, S>(mut self, signal: S) -> Self
     where
-        S: Signal<Item = TagBuilder> + 'static,
-    {
-        self.add_child_signal(signal);
-        self
-    }
-
-    #[inline]
-    pub fn child_signal_opt<S>(mut self, signal: S) -> Self
-    where
-        S: Signal<Item = Option<TagBuilder>> + 'static,
+        V: Into<View>,
+        S: Signal<Item = V> + 'static,
     {
         self.add_child_signal(signal);
         self
@@ -999,7 +1003,7 @@ pub struct WithSignal<S>(pub S);
 impl<S, I> Apply for WithSignal<S>
 where
     S: Signal<Item = I> + 'static,
-    I: Into<Option<TagBuilder>>,
+    I: Into<View>,
 {
     fn apply(self, tag: &mut TagBuilder) {
         tag.add_child_signal(self.0);
