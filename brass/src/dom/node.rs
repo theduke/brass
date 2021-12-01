@@ -27,6 +27,12 @@ pub enum View {
     Fragment(Fragment),
 }
 
+impl Default for View {
+    fn default() -> Self {
+        Self::Empty
+    }
+}
+
 impl From<Node> for View {
     fn from(n: Node) -> Self {
         Self::Node(n)
@@ -42,6 +48,12 @@ impl From<TagBuilder> for View {
 impl From<Fragment> for View {
     fn from(f: Fragment) -> Self {
         Self::Fragment(f)
+    }
+}
+
+impl From<()> for View {
+    fn from(_: ()) -> Self {
+        Self::Empty
     }
 }
 
