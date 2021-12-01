@@ -152,6 +152,14 @@ impl TagBuilder<()> {
         }
     }
 
+    #[doc(hidden)]
+    pub fn from_node(node: Node) -> Self {
+        Self{
+            node,
+            _marker: PhantomData,
+        }
+    }
+
     pub fn elem(&self) -> &web_sys::Element {
         self.node.node.unchecked_ref()
     }
