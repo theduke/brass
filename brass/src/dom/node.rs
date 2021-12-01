@@ -26,7 +26,38 @@ pub enum View {
     Fragment(Fragment),
 }
 
+impl From<Node> for View {
+    fn from(n: Node) -> Self {
+        Self::Node(n)
+    }
+}
+
+impl From<TagBuilder> for View {
+    fn from(t: TagBuilder) -> Self {
+        Self::Node(t.build())
+    }
+}
+
+impl From<Fragment> for View {
+    fn from(f: Fragment) -> Self {
+        Self::Fragment(f)
+    }
+}
+
 impl View {
+    pub(crate) fn attach(&self, parent: &web_sys::Element) {
+        match self {
+            View::Node(n) => {
+                n.attach(parent);
+            }
+            View::Fragment(f) => {
+                for item in &f.items {
+                    item.attach(parent);
+                }
+            }
+        }
+    }
+
     pub fn as_node(&self) -> Option<&Node> {
         if let Self::Node(v) = self {
             Some(v)
@@ -823,12 +854,12 @@ impl TagBuilder<()> {
 }
 
 pub trait Render {
-    fn render(self) -> TagBuilder;
+    fn render(self) -> View;
 }
 
 impl<R: Render> Apply for R {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child(self.render());
+        self.render().apply(tag);
     }
 }
 
@@ -863,6 +894,12 @@ impl<'a> Apply for DomStr<'a> {
 impl Apply for TagBuilder {
     fn apply(self, tag: &mut TagBuilder) {
         tag.add_child(self);
+    }
+}
+
+impl Apply for Node {
+    fn apply(self, tag: &mut TagBuilder) {
+        tag.add_node(self);
     }
 }
 

@@ -59,12 +59,12 @@ pub trait Component: Sized + 'static {
     fn init(props: Self::Properties, ctx: Context<'_, Self>) -> Self;
     fn render(&mut self, ctx: Context<'_, Self>) -> TagBuilder;
 
-    fn build(props: Self::Properties) -> TagBuilder {
+    fn build(props: Self::Properties) -> crate::dom::View {
         build_component::<Self>(props)
     }
 }
 
-pub fn build_component<C: Component>(props: C::Properties) -> TagBuilder {
+pub fn build_component<C: Component>(props: C::Properties) -> crate::dom::View {
     let comp = Rc::new(RefCell::new(State { state: None }));
     let mut state = C::init(props, Context { state: &comp });
 
@@ -79,5 +79,5 @@ pub fn build_component<C: Component>(props: C::Properties) -> TagBuilder {
     node.add_after_remove(move || {
         std::mem::drop(comp);
     });
-    node
+    node.into()
 }

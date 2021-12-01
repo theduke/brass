@@ -145,7 +145,7 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
                         #(
                             f.items.push(#items);
                         )*
-                        f
+                        brass::dom::View::Fragment(f)
                     }
                 }
             }
@@ -156,8 +156,11 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
                     parent.add_child_text(brass::web::DomStr::Str(#value));
                 }
             } else {
+                // TODO: use cached JsString ?
                 quote! {
-                    brass::dom::View::Node(brass::dom::Node::new_text(brass::web::DomStr::Str(#value)))
+                    brass::dom::View::Node(
+                        brass::dom::View::Node(brass::dom::Node::new_text(brass::web::DomStr::Str(#value)))
+                    )
                 }
             }
         }

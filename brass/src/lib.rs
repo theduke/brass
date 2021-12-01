@@ -16,20 +16,20 @@ pub use brass_macros::view;
 
 use component::{build_component, Component};
 
-use dom::TagBuilder;
+use dom::View;
 pub use futures_signals as signal;
 
 pub fn launch_component<C: Component + 'static>(
     parent: web_sys::Element,
     properties: C::Properties,
 ) {
-    let tag = build_component::<C>(properties);
-    tag.node.attach(&parent);
-    std::mem::forget(tag);
+    let view = build_component::<C>(properties);
+    view.attach(&parent);
+    std::mem::forget(view);
 }
 
-pub fn launch<F: FnOnce() -> TagBuilder>(parent: web_sys::Element, render: F) {
-    let node = render().build();
-    node.attach(&parent);
-    std::mem::forget(node);
+pub fn launch<F: FnOnce() -> View>(parent: web_sys::Element, render: F) {
+    let view = render();
+    view.attach(&parent);
+    std::mem::forget(view);
 }
