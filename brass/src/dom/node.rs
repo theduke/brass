@@ -66,6 +66,14 @@ impl View {
         }
     }
 
+    pub fn into_node(self) -> Option<Node> {
+        if let Self::Node(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
     pub fn as_fragment(&self) -> Option<&Fragment> {
         if let Self::Fragment(v) = self {
             Some(v)
@@ -848,8 +856,14 @@ impl TagBuilder<()> {
         self
     }
 
+    #[inline]
     pub fn build(self) -> Node {
         self.node
+    }
+
+    #[inline]
+    pub fn into_view(self) -> View {
+        View::Node(self.build())
     }
 }
 
