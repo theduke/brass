@@ -11,6 +11,9 @@ pub mod effect;
 
 pub use self::web::DomStr;
 
+#[cfg(feature = "macros")]
+pub use brass_macros::view;
+
 use component::{build_component, Component};
 
 use dom::TagBuilder;

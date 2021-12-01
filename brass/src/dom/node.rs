@@ -11,26 +11,61 @@ use futures_signals::{
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 
+use super::{Attr, DomEvent, Event, Style, Tag};
 use crate::{
     component::{build_component, Component},
     web::{
-        add_event_lister, create_element, create_empty_node, create_text, elem_add_class,
+        self, add_event_lister, create_element, create_empty_node, create_text, elem_add_class,
         elem_remove_class, elem_set_class_js, empty_string, remove_attr, set_attribute, set_style,
         set_text_data, DomStr,
     },
 };
 
-use super::{Attr, DomEvent, Event, Style, Tag};
+pub enum View {
+    Node(Node),
+    Fragment(Fragment),
+}
+
+impl View {
+    pub fn as_node(&self) -> Option<&Node> {
+        if let Self::Node(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+
+    pub fn as_fragment(&self) -> Option<&Fragment> {
+        if let Self::Fragment(v) = self {
+            Some(v)
+        } else {
+            None
+        }
+    }
+}
+
+pub struct Fragment {
+    pub items: Vec<View>,
+}
 
 pub struct Node {
-    pub elem: web_sys::Element,
+    pub node: web_sys::Node,
     after_remove: Vec<Box<dyn FnOnce()>>,
     aborts: Vec<AbortHandle>,
 }
 
 impl Node {
     pub(crate) fn attach(&self, parent: &web_sys::Element) {
-        parent.append_child(&self.elem).unwrap();
+        parent.append_child(&self.node).unwrap();
+    }
+
+    pub fn new_text(value: DomStr<'_>) -> Self {
+        let text = web::create_text(value);
+        Self {
+            node: text.into(),
+            after_remove: Vec::new(),
+            aborts: Vec::new(),
+        }
     }
 }
 
@@ -56,7 +91,7 @@ impl TagBuilder<()> {
         let elem = create_element(tag);
         Self {
             node: Node {
-                elem,
+                node: elem.into(),
                 after_remove: Vec::new(),
                 aborts: Vec::new(),
             },
@@ -65,7 +100,7 @@ impl TagBuilder<()> {
     }
 
     pub fn elem(&self) -> &web_sys::Element {
-        &self.node.elem
+        self.node.node.unchecked_ref()
     }
 
     pub fn register_future<F: Future<Output = ()> + 'static>(&mut self, f: F) {
@@ -102,21 +137,21 @@ impl TagBuilder<()> {
     }
 
     pub fn add_attr<'a, I: Into<DomStr<'a>>>(&mut self, attr: Attr, value: I) {
-        set_attribute(&self.node.elem, attr, value.into());
+        set_attribute(self.elem(), attr, value.into());
     }
 
     pub fn attr<'a, I: Into<DomStr<'a>>>(self, attr: Attr, value: I) -> Self {
-        set_attribute(&self.node.elem, attr, value.into());
+        set_attribute(self.elem(), attr, value.into());
         self
     }
 
     pub fn style_raw<'a, I: Into<DomStr<'a>>>(self, value: I) -> Self {
-        set_attribute(&self.node.elem, Attr::Style, value.into());
+        set_attribute(self.elem(), Attr::Style, value.into());
         self
     }
 
     pub fn set_style<'a, I: Into<DomStr<'a>>>(&mut self, style: Style, value: I) {
-        set_style(&self.node.elem, style, value.into());
+        set_style(self.elem(), style, value.into());
     }
 
     #[inline]
@@ -130,7 +165,7 @@ impl TagBuilder<()> {
         V: Into<DomStr<'static>>,
         S: Signal<Item = V> + 'static,
     {
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
         let f = signal.for_each(move |value| {
             set_style(&elem, style, value.into());
             async {}
@@ -165,9 +200,28 @@ impl TagBuilder<()> {
         V: Into<DomStr<'static>>,
         S: Signal<Item = V> + 'static,
     {
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
         let f = signal.for_each(move |value| {
             set_attribute(&elem, attr, value.into());
+            async {}
+        });
+        self.register_future(f);
+    }
+
+    pub fn add_attr_signal_opt<V, S>(&mut self, attr: Attr, signal: S)
+    where
+        V: Into<DomStr<'static>>,
+        S: Signal<Item = Option<V>> + 'static,
+    {
+        let elem = self.elem().clone();
+        let mut is_added = false;
+        let f = signal.for_each(move |opt| {
+            if let Some(value) = opt {
+                set_attribute(&elem, attr, value.into());
+                is_added = true;
+            } else if is_added {
+                remove_attr(&elem, attr);
+            }
             async {}
         });
         self.register_future(f);
@@ -187,7 +241,7 @@ impl TagBuilder<()> {
     where
         S: Signal<Item = bool> + 'static,
     {
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
         let f = signal.for_each(move |flag| {
             if flag {
                 // TODO: use cached empty string.
@@ -214,7 +268,7 @@ impl TagBuilder<()> {
         I: Into<DomStr<'a>>,
     {
         let value = class.into();
-        elem_add_class(&self.node.elem, &value);
+        elem_add_class(self.elem(), &value);
     }
 
     #[inline]
@@ -252,7 +306,7 @@ impl TagBuilder<()> {
         I: Into<DomStr<'a>>,
     {
         if let Some(class) = class {
-            elem_add_class(&self.node.elem, &class.into());
+            elem_add_class(self.elem(), &class.into());
         }
     }
 
@@ -293,7 +347,7 @@ impl TagBuilder<()> {
         I: Into<DomStr<'static>>,
         S: Signal<Item = I> + 'static,
     {
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
         let mut current = None;
         self.register_future(signal.for_each(move |value| {
             if let Some(current) = current.take() {
@@ -323,7 +377,7 @@ impl TagBuilder<()> {
     {
         let class = class.into();
 
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
         let mut is_added = false;
         self.register_future(signal.for_each(move |flag| {
             if flag {
@@ -360,7 +414,7 @@ impl TagBuilder<()> {
         // TODO: we really want a custom ClassList signal implementation instead of
         // MutableVec.
 
-        let elem = self.node.elem.clone();
+        let elem = self.elem().clone();
 
         self.register_future(signal.for_each(move |diff| {
             match diff {
@@ -399,7 +453,7 @@ impl TagBuilder<()> {
 
     pub fn add_child_text<'a>(&mut self, value: DomStr<'a>) {
         let text = create_text(value);
-        self.node.elem.append_child(&text).unwrap();
+        self.node.node.append_child(&text).unwrap();
     }
 
     #[inline]
@@ -417,7 +471,7 @@ impl TagBuilder<()> {
         S: Signal<Item = V> + 'static,
     {
         let text = create_text("".into());
-        self.node.elem.append_child(&text).unwrap();
+        self.node.node.append_child(&text).unwrap();
 
         let f = signal.for_each(move |value| {
             set_text_data(&text, &value.into());
@@ -436,13 +490,16 @@ impl TagBuilder<()> {
         self
     }
 
-    pub fn add_child(&mut self, mut child: TagBuilder) {
+    fn add_node(&mut self, mut node: Node) {
         // TODO use custom binding for efficiency?
-        self.node.elem.append_child(&child.node.elem).unwrap();
-        self.node
-            .after_remove
-            .extend(child.node.after_remove.drain(..));
-        self.node.aborts.extend(child.node.aborts.drain(..));
+        self.node.node.append_child(&node.node).unwrap();
+        self.node.after_remove.extend(node.after_remove.drain(..));
+        self.node.aborts.extend(node.aborts.drain(..));
+    }
+
+    #[inline]
+    pub fn add_child(&mut self, child: TagBuilder) {
+        self.add_node(child.node);
     }
 
     pub fn child(mut self, child: TagBuilder) -> Self {
@@ -455,7 +512,7 @@ impl TagBuilder<()> {
         T: Into<Option<TagBuilder>>,
         S: Signal<Item = T> + 'static,
     {
-        let parent = self.node.elem.clone();
+        let parent = self.elem().clone();
         // TODO: use cache!
         // TODO: use something other than a span? maybe a comment node?
         let marker = create_empty_node();
@@ -466,14 +523,14 @@ impl TagBuilder<()> {
         let f = signal.for_each(move |opt| {
             if let Some(tag) = opt.into() {
                 if let Some(old) = current_node.take() {
-                    parent.replace_child(&tag.node.elem, &old.elem).unwrap();
+                    parent.replace_child(&tag.node.node, &old.node).unwrap();
                 } else {
-                    parent.replace_child(&tag.node.elem, &marker).unwrap();
+                    parent.replace_child(&tag.node.node, &marker).unwrap();
                 }
                 current_node = Some(tag.node);
             } else {
                 if let Some(current) = current_node.take() {
-                    parent.replace_child(&marker, &current.elem).unwrap();
+                    parent.replace_child(&marker, &current.node).unwrap();
                 }
             }
 
@@ -509,7 +566,7 @@ impl TagBuilder<()> {
         S: SignalVec<Item = V> + 'static,
         R: Fn(&V) -> Node + 'static,
     {
-        let parent = self.node.elem.clone();
+        let parent = self.elem().clone();
         // TODO: use cache!
         // TODO: use something other than a span? maybe a comment node?
         let marker = create_empty_node();
@@ -532,7 +589,7 @@ impl TagBuilder<()> {
                 VecDiff::Replace { values } => {
                     tracing::warn!("VecDiff::Replace {}", values.len());
                     children.drain(..).for_each(|child| {
-                        parent.remove_child(&child.elem).unwrap();
+                        parent.remove_child(&child.node).unwrap();
                     });
 
                     if values.is_empty() && !fallback_visible {
@@ -549,7 +606,7 @@ impl TagBuilder<()> {
                         }
                         for value in values {
                             let child = render(&value);
-                            parent.insert_before(&child.elem, Some(&marker)).unwrap();
+                            parent.insert_before(&child.node, Some(&marker)).unwrap();
                             children.push(child);
                         }
                     }
@@ -565,7 +622,7 @@ impl TagBuilder<()> {
 
                     let child = render(&value);
                     if index == 0 {
-                        parent.prepend_with_node_1(&child.elem).unwrap();
+                        parent.prepend_with_node_1(&child.node).unwrap();
                     }
                     children.insert(0, child);
                 }
@@ -575,7 +632,7 @@ impl TagBuilder<()> {
                 VecDiff::RemoveAt { index } => {
                     tracing::warn!("VecDiff::RemoveAt {}", index);
                     let removed = children.remove(index);
-                    parent.remove_child(&removed.elem).unwrap();
+                    parent.remove_child(&removed.node).unwrap();
 
                     if children.is_empty() && !fallback_visible {
                         if let Some(e) = fallback.as_ref() {
@@ -591,7 +648,7 @@ impl TagBuilder<()> {
                 VecDiff::Push { value } => {
                     tracing::warn!("VecDiff::Push");
                     let child = render(&value);
-                    parent.insert_before(&child.elem, Some(&marker)).unwrap();
+                    parent.insert_before(&child.node, Some(&marker)).unwrap();
                     children.push(child);
 
                     if fallback_visible {
@@ -604,7 +661,7 @@ impl TagBuilder<()> {
                 VecDiff::Pop {} => {
                     tracing::warn!("VecDiff::Pop");
                     if let Some(old) = children.pop() {
-                        parent.remove_child(&old.elem).unwrap();
+                        parent.remove_child(&old.node).unwrap();
                     }
 
                     if children.is_empty() && !fallback_visible {
@@ -617,7 +674,7 @@ impl TagBuilder<()> {
                 VecDiff::Clear {} => {
                     tracing::warn!("VecDiff::Clear");
                     children.drain(..).for_each(|child| {
-                        parent.remove_child(&child.elem).unwrap();
+                        parent.remove_child(&child.node).unwrap();
                     });
 
                     if !fallback_visible {
@@ -668,7 +725,36 @@ impl TagBuilder<()> {
                 handler(event);
             }) as Box<dyn FnMut(web_sys::Event)>);
 
-        add_event_lister(&self.node.elem, event, callback.as_ref().unchecked_ref());
+        add_event_lister(self.elem(), event, callback.as_ref().unchecked_ref());
+        self.node.after_remove.push(Box::new(move || {
+            std::mem::drop(callback);
+        }));
+    }
+
+    pub fn add_event_listener_cast<E, F>(&mut self, event: Event, mut handler: F)
+    where
+        E: AsRef<web_sys::Event> + JsCast,
+        F: FnMut(E) + 'static,
+    {
+        // TODO: use global event handler.
+        // TODO: use callback cache.
+        let callback =
+            wasm_bindgen::closure::Closure::wrap(Box::new(move |raw_event: web_sys::Event| {
+                match raw_event.dyn_into::<E>() {
+                    Ok(event) => {
+                        handler(event);
+                    }
+                    Err(err) => {
+                        panic!(
+                        "Event handler received invalid invalid event type (Expected {}) - {:?}",
+                        std::any::type_name::<E>(),
+                        err
+                    );
+                    }
+                }
+            }) as Box<dyn FnMut(web_sys::Event)>);
+
+        add_event_lister(self.elem(), event, callback.as_ref().unchecked_ref());
         self.node.after_remove.push(Box::new(move || {
             std::mem::drop(callback);
         }));
@@ -777,6 +863,27 @@ impl<'a> Apply for DomStr<'a> {
 impl Apply for TagBuilder {
     fn apply(self, tag: &mut TagBuilder) {
         tag.add_child(self);
+    }
+}
+
+impl Apply for View {
+    fn apply(self, tag: &mut TagBuilder) {
+        match self {
+            View::Node(n) => tag.add_node(n),
+            View::Fragment(Fragment { items }) => {
+                for item in items {
+                    item.apply(tag);
+                }
+            }
+        }
+    }
+}
+
+impl Apply for Fragment {
+    fn apply(self, tag: &mut TagBuilder) {
+        for item in self.items {
+            item.apply(tag);
+        }
     }
 }
 
@@ -903,6 +1010,55 @@ impl<A1: Apply, A2: Apply, A3: Apply, A4: Apply, A5: Apply, A6: Apply> Apply
         self.3.apply(tag);
         self.4.apply(tag);
         self.5.apply(tag);
+    }
+}
+
+pub trait AttrValueApply<M> {
+    fn attr_apply(self, attr: Attr, b: &mut TagBuilder);
+}
+
+impl<V: Into<DomStr<'static>>> AttrValueApply<DomStr<'static>> for V {
+    fn attr_apply(self, attr: Attr, b: &mut TagBuilder) {
+        b.add_attr(attr, self)
+    }
+}
+
+impl<V: Into<DomStr<'static>>, S: Signal<Item = V> + 'static> AttrValueApply<(S, DomStr<'static>)>
+    for S
+{
+    fn attr_apply(self, attr: Attr, b: &mut TagBuilder) {
+        b.add_attr_signal(attr, self)
+    }
+}
+
+impl<V: Into<DomStr<'static>>, S: Signal<Item = Option<V>> + 'static>
+    AttrValueApply<(S, Option<DomStr<'static>>)> for S
+{
+    fn attr_apply(self, attr: Attr, b: &mut TagBuilder) {
+        b.add_attr_signal_opt(attr, self)
+    }
+}
+
+pub trait EventHandlerApply<V> {
+    fn event_handler_apply(self, event: Event, target: &mut TagBuilder);
+}
+
+impl<F> EventHandlerApply<fn()> for F
+where
+    F: FnMut() + 'static,
+{
+    fn event_handler_apply(mut self, event: Event, target: &mut TagBuilder) {
+        target.add_event_listener(event, move |_| self())
+    }
+}
+
+impl<F, E> EventHandlerApply<fn(E)> for F
+where
+    F: FnMut(E) + 'static,
+    E: AsRef<web_sys::Event> + JsCast,
+{
+    fn event_handler_apply(self, event: Event, target: &mut TagBuilder) {
+        target.add_event_listener_cast(event, self)
     }
 }
 

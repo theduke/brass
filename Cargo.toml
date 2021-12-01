@@ -1,6 +1,7 @@
 [workspace]
 members = [
     "brass",
+    "brass_macros",
     "brass_bulma",
 
     "bench",

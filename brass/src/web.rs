@@ -262,8 +262,8 @@ pub fn empty_string() -> &'static JsString {
 
 #[derive(Debug)]
 pub enum DomStr<'a> {
-    String(String),
     Str(&'a str),
+    String(String),
     JsStr(&'a JsString),
     JsString(JsString),
 }
