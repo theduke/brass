@@ -22,6 +22,7 @@ use crate::{
 };
 
 pub enum View {
+    Empty,
     Node(Node),
     Fragment(Fragment),
 }
@@ -47,6 +48,10 @@ impl From<Fragment> for View {
 impl View {
     pub(crate) fn attach(&self, parent: &web_sys::Element) {
         match self {
+            View::Empty => {
+
+            }
+            View::Empty => {}
             View::Node(n) => {
                 n.attach(parent);
             }
@@ -920,6 +925,7 @@ impl Apply for Node {
 impl Apply for View {
     fn apply(self, tag: &mut TagBuilder) {
         match self {
+            View::Empty => {}
             View::Node(n) => tag.add_node(n),
             View::Fragment(Fragment { items }) => {
                 for item in items {
