@@ -49,5 +49,6 @@ pub fn main() {
             .children_signal(items_signal, |value| {
                 TagBuilder::new(Tag::Div).child_text(value.as_str()).build()
             })
+            .into_view()
     });
 }
