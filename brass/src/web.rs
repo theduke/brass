@@ -292,6 +292,12 @@ impl<'a> From<&'a JsString> for DomStr<'a> {
     }
 }
 
+impl<'a> From<JsString> for DomStr<'a> {
+    fn from(s: JsString) -> Self {
+        Self::JsString(s)
+    }
+}
+
 pub fn document_fullscreen_element() -> Option<web_sys::Element> {
     __brass_document_fullscreen_element()
 }

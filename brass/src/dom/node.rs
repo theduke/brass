@@ -8,6 +8,7 @@ use futures_signals::{
     signal::{Mutable, Signal, SignalExt},
     signal_vec::{SignalVec, SignalVecExt, VecDiff},
 };
+use js_sys::JsString;
 use wasm_bindgen::JsCast;
 use wasm_bindgen_futures::spawn_local;
 
@@ -154,7 +155,7 @@ impl TagBuilder<()> {
 
     #[doc(hidden)]
     pub fn from_node(node: Node) -> Self {
-        Self{
+        Self {
             node,
             _marker: PhantomData,
         }
@@ -512,21 +513,21 @@ impl TagBuilder<()> {
         }));
     }
 
-    pub fn add_child_text<'a>(&mut self, value: DomStr<'a>) {
+    pub fn add_text<'a>(&mut self, value: DomStr<'a>) {
         let text = create_text(value);
         self.node.node.append_child(&text).unwrap();
     }
 
     #[inline]
-    pub fn child_text<'a, S>(mut self, value: S) -> Self
+    pub fn text<'a, S>(mut self, value: S) -> Self
     where
         S: Into<DomStr<'a>>,
     {
-        self.add_child_text(value.into());
+        self.add_text(value.into());
         self
     }
 
-    pub fn add_child_text_signal<V, S>(&mut self, signal: S)
+    pub fn add_text_signal<V, S>(&mut self, signal: S)
     where
         V: Into<DomStr<'static>>,
         S: Signal<Item = V> + 'static,
@@ -542,12 +543,12 @@ impl TagBuilder<()> {
     }
 
     #[inline]
-    pub fn child_text_signal<V, S>(mut self, signal: S) -> Self
+    pub fn text_signal<V, S>(mut self, signal: S) -> Self
     where
         V: Into<DomStr<'static>>,
         S: Signal<Item = V> + 'static,
     {
-        self.add_child_text_signal(signal);
+        self.add_text_signal(signal);
         self
     }
 
@@ -568,7 +569,7 @@ impl TagBuilder<()> {
         self
     }
 
-    pub fn add_child_signal<T, S>(&mut self, signal: S)
+    pub fn add_signal<T, S>(&mut self, signal: S)
     where
         T: Into<View>,
         S: Signal<Item = T> + 'static,
@@ -616,21 +617,17 @@ impl TagBuilder<()> {
     }
 
     #[inline]
-    pub fn child_signal<V, S>(mut self, signal: S) -> Self
+    pub fn signal<V, S>(mut self, signal: S) -> Self
     where
         V: Into<View>,
         S: Signal<Item = V> + 'static,
     {
-        self.add_child_signal(signal);
+        self.add_signal(signal);
         self
     }
 
-    pub fn add_children_signal<V, S, R>(
-        &mut self,
-        signal: S,
-        render: R,
-        fallback: Option<TagBuilder>,
-    ) where
+    pub fn add_signal_vec<V, S, R>(&mut self, signal: S, render: R, fallback: Option<TagBuilder>)
+    where
         S: SignalVec<Item = V> + 'static,
         R: Fn(&V) -> Node + 'static,
     {
@@ -759,16 +756,16 @@ impl TagBuilder<()> {
         self.register_future(f);
     }
 
-    pub fn children_signal<V, S, R>(mut self, signal: S, render: R) -> Self
+    pub fn signal_vec<V, S, R>(mut self, signal: S, render: R) -> Self
     where
         S: SignalVec<Item = V> + 'static,
         R: Fn(&V) -> Node + 'static,
     {
-        self.add_children_signal(signal, render, None);
+        self.add_signal_vec(signal, render, None);
         self
     }
 
-    pub fn children_signal_with_fallback<V, S, R>(
+    pub fn signal_vec_with_fallback<V, S, R>(
         mut self,
         signal: S,
         render: R,
@@ -778,7 +775,7 @@ impl TagBuilder<()> {
         S: SignalVec<Item = V> + 'static,
         R: Fn(&V) -> Node + 'static,
     {
-        self.add_children_signal(signal, render, Some(fallback));
+        self.add_signal_vec(signal, render, Some(fallback));
         self
     }
 
@@ -912,25 +909,37 @@ pub trait Apply {
 
 impl<'a> Apply for &'a str {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_text(self.into());
+        tag.add_text(self.into());
+    }
+}
+
+impl<'a> Apply for &'a JsString {
+    fn apply(self, tag: &mut TagBuilder) {
+        tag.add_text(self.into());
+    }
+}
+
+impl Apply for JsString {
+    fn apply(self, tag: &mut TagBuilder) {
+        tag.add_text(self.into());
     }
 }
 
 impl<'a> Apply for &'a String {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_text(self.into());
+        tag.add_text(self.into());
     }
 }
 
 impl Apply for String {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_text(self.into());
+        tag.add_text(self.into());
     }
 }
 
 impl<'a> Apply for DomStr<'a> {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_text(self);
+        tag.add_text(self);
     }
 }
 
@@ -971,7 +980,7 @@ impl Apply for Fragment {
 impl<'a> Apply for &'a Mutable<String> {
     fn apply(self, tag: &mut TagBuilder) {
         // TODO: possible to avoid cloning?
-        tag.add_child_text_signal(self.signal_cloned());
+        tag.add_text_signal(self.signal_cloned());
     }
 }
 
@@ -983,7 +992,7 @@ where
     O: Into<DomStr<'static>>,
 {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_text_signal(self.0)
+        tag.add_text_signal(self.0)
     }
 }
 
@@ -1014,7 +1023,7 @@ where
     I: Into<View>,
 {
     fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child_signal(self.0);
+        tag.add_signal(self.0);
     }
 }
 

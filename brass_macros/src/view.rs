@@ -153,7 +153,7 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
         Node::Text { value } => {
             if nested {
                 quote! {
-                    parent.add_child_text(brass::web::DomStr::Str(#value));
+                    parent.add_text(brass::web::DomStr::Str(#value));
                 }
             } else {
                 // TODO: use cached JsString ?

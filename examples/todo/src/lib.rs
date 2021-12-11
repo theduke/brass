@@ -40,14 +40,14 @@ pub fn main() {
             .child(
                 TagBuilder::new(Tag::Button)
                     .and("+")
-                    .child_text_signal(counter.signal().map(|x| x.to_string()))
+                    .text_signal(counter.signal().map(|x| x.to_string()))
                     .on(move |_: ClickEvent| {
                         tracing::trace!("event handler!");
                         counter2.replace_with(|v| *v + 1);
                     }),
             )
-            .children_signal(items_signal, |value| {
-                TagBuilder::new(Tag::Div).child_text(value.as_str()).build()
+            .signal_vec(items_signal, |value| {
+                TagBuilder::new(Tag::Div).text(value.as_str()).build()
             })
             .into_view()
     });
