@@ -6,5 +6,7 @@ make_str_enum! {
         Color = "color",
         Height = "height",
         Width = "width",
+        Background = "background",
+        BackgroundColor = "background-color",
     }
 }
