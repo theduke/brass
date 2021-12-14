@@ -16,7 +16,6 @@ enum Node {
         event_handlers: Vec<EventHandler>,
         children: Vec<Self>,
     },
-    Component {},
     Fragment {
         items: Vec<Self>,
     },
@@ -44,7 +43,6 @@ struct Attr {
 enum AttrValue {
     None,
     Str(syn::LitStr),
-    Bool(syn::LitBool),
     Expr(syn::Expr),
 }
 
@@ -79,7 +77,6 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
                         parent.add_attr(brass::dom::Attr::#name, #value);
                     }
                 }
-                AttrValue::Bool(_) => todo!(),
                 AttrValue::Expr(e) => {
                     quote!{
                         brass::dom::AttrValueApply::attr_apply(#e, brass::dom::Attr::#name, &mut parent);
@@ -130,7 +127,6 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
                 }
             }
         }
-        Node::Component {} => todo!(),
         Node::Fragment { items } => {
             if nested {
                 let items = items.into_iter().map(|item| render_node(item, true));
