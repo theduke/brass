@@ -11,6 +11,6 @@ crate-type = ["cdylib"]
 console_error_panic_hook = "0.1.6"
 brass = { path = "../../brass" }
 tracing = "0.1.22"
-tracing-wasm = "0.1.0"
 wasm-bindgen = "0.2.69"
 web-sys = "0.3.46"
+tracing-wasm = "0.2.1"
