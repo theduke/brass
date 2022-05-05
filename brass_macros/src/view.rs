@@ -92,7 +92,7 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
                 let handler = e.handler;
 
                 quote!{
-                    brass::dom::EventHandlerApply::event_handler_apply(#handler, brass::dom::Event::#ev_ident, &mut parent);
+                    brass::dom::EventHandlerApply::event_handler_apply(#handler, brass::dom::Ev::#ev_ident, &mut parent);
                     // parent.add_event_listener_cast(
                     //     brass::dom::Event::#ev_ident,
                     //     #handler
@@ -119,7 +119,7 @@ fn render_node(node: Node, nested: bool) -> proc_macro2::TokenStream {
 
             if nested {
                 quote! {
-                    parent.add_child(#builder);
+                    parent.add_tag(#builder);
                 }
             } else {
                 quote! {

@@ -1,14 +1,51 @@
 use wasm_bindgen::JsCast;
 use web_sys::HtmlInputElement;
 
+// pub struct Event<E> {
+//     propagation_stopped: AtomicBool,
+//     event: E,
+// }
+
+// impl<E> Event<E> {
+//     pub fn stop_propagation(&self) {
+//         self.propagation_stopped
+//             .store(true, std::sync::atomic::Ordering::SeqCst);
+//     }
+// }
+
+// impl<E: AsRef<web_sys::Event>> Event<E> {
+//     pub fn prevent_default(&self) {
+//         self.event.as_ref().prevent_default();
+//     }
+// }
+
+// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+// pub(crate) struct EventHandlerId(u64);
+
+// impl EventHandlerId {
+//     pub fn new_zero() -> Self {
+//         Self(0)
+
+//     }
+
+//     pub fn inc(&self) -> Self {
+//         Self(self.0 + 1)
+//     }
+// }
+
+// pub(crate) struct EventHandler {
+//     id: EventHandlerId,
+//     handler: Box<dyn FnMut(&Event<web_sys::Event>)>,
+// }
+
 pub trait DomEvent: Sized {
-    fn event_type() -> crate::dom::Event;
+    fn event_type() -> crate::dom::Ev;
     fn from_dom(ev: web_sys::Event) -> Option<Self>;
 }
 
 impl DomEvent for web_sys::InputEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::Input
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::Input
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -46,8 +83,8 @@ impl std::ops::Deref for InputEvent {
 }
 
 impl DomEvent for InputEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::Input
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::Input
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -85,8 +122,8 @@ impl std::ops::Deref for ChangeEvent {
 }
 
 impl DomEvent for ChangeEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::Change
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::Change
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -107,8 +144,8 @@ impl std::ops::Deref for ClickEvent {
 }
 
 impl DomEvent for ClickEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::Click
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::Click
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -140,8 +177,8 @@ impl CheckboxInputEvent {
 // }
 
 impl DomEvent for CheckboxInputEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::Change
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::Change
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -162,8 +199,8 @@ impl std::ops::Deref for KeyDownEvent {
 }
 
 impl DomEvent for KeyDownEvent {
-    fn event_type() -> crate::dom::Event {
-        crate::dom::Event::KeyDown
+    fn event_type() -> crate::dom::Ev {
+        crate::dom::Ev::KeyDown
     }
 
     fn from_dom(ev: web_sys::Event) -> Option<Self> {
@@ -172,7 +209,7 @@ impl DomEvent for KeyDownEvent {
 }
 
 make_str_enum! {
-    Event {
+    Ev {
         Cached = "cached",
         Error = "error",
         Abort = "abort",

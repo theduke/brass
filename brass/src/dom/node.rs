@@ -1,49 +1,30 @@
 use std::{cell::RefCell, marker::PhantomData, rc::Rc};
 
-use futures::{
-    future::{AbortHandle, Abortable},
-    Future,
-};
+use futures::Future;
 use futures_signals::{
     signal::{Mutable, Signal, SignalExt},
     signal_vec::{SignalVec, SignalVecExt, VecDiff},
 };
 use js_sys::JsString;
 use wasm_bindgen::JsCast;
-use wasm_bindgen_futures::spawn_local;
 
-use super::{Attr, DomEvent, Event, Style, Tag};
 use crate::{
     component::{build_component, Component},
+    context::AppContext,
     web::{
-        self, add_event_lister, create_element, create_empty_node, create_text, elem_add_class,
-        elem_remove_class, elem_set_class_js, empty_string, remove_attr, set_attribute, set_style,
-        set_text_data, DomStr,
+        self, add_event_lister, create_element, create_text, elem_add_class, elem_remove_class,
+        elem_set_class_js, empty_string, remove_attr, set_attribute, set_style, set_text_data,
+        DomStr,
     },
 };
 
-pub enum View {
-    Empty,
-    Node(Node),
-    Fragment(Fragment),
-}
+use super::{
+    signal_vec_view::SignalVecView, signal_view::SignalView, view::RetainedView, AbortGuard, Attr,
+    DomEvent, Ev, Style, Tag, View,
+};
 
-impl Default for View {
-    fn default() -> Self {
-        Self::Empty
-    }
-}
-
-impl From<Node> for View {
-    fn from(n: Node) -> Self {
-        Self::Node(n)
-    }
-}
-
-impl From<TagBuilder> for View {
-    fn from(t: TagBuilder) -> Self {
-        Self::Node(t.build())
-    }
+pub struct Fragment {
+    pub items: Vec<View>,
 }
 
 impl From<Fragment> for View {
@@ -52,63 +33,20 @@ impl From<Fragment> for View {
     }
 }
 
-impl From<()> for View {
-    fn from(_: ()) -> Self {
-        Self::Empty
-    }
-}
-
-impl View {
-    pub(crate) fn attach(&self, parent: &web_sys::Element) {
-        match self {
-            View::Empty => {}
-            View::Node(n) => {
-                n.attach(parent);
-            }
-            View::Fragment(f) => {
-                for item in &f.items {
-                    item.attach(parent);
-                }
-            }
-        }
-    }
-
-    pub fn as_node(&self) -> Option<&Node> {
-        if let Self::Node(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
-    pub fn into_node(self) -> Option<Node> {
-        if let Self::Node(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-
-    pub fn as_fragment(&self) -> Option<&Fragment> {
-        if let Self::Fragment(v) = self {
-            Some(v)
-        } else {
-            None
-        }
-    }
-}
-
-pub struct Fragment {
-    pub items: Vec<View>,
-}
-
 pub struct Node {
-    pub node: web_sys::Node,
+    node: web_sys::Node,
     after_remove: Vec<Box<dyn FnOnce()>>,
-    aborts: Vec<AbortHandle>,
+    aborts: Vec<AbortGuard>,
+
+    children: Vec<RetainedView>,
 }
 
 impl Node {
+    #[inline]
+    pub fn node(&self) -> &web_sys::Node {
+        &self.node
+    }
+
     pub(crate) fn attach(&self, parent: &web_sys::Element) {
         parent.append_child(&self.node).unwrap();
     }
@@ -119,6 +57,7 @@ impl Node {
             node: text.into(),
             after_remove: Vec::new(),
             aborts: Vec::new(),
+            children: Vec::new(),
         }
     }
 }
@@ -128,9 +67,12 @@ impl Drop for Node {
         for callback in self.after_remove.drain(..) {
             callback();
         }
-        for abort in self.aborts.drain(..) {
-            abort.abort();
-        }
+    }
+}
+
+impl From<Node> for View {
+    fn from(n: Node) -> Self {
+        Self::Node(n)
     }
 }
 
@@ -148,6 +90,7 @@ impl TagBuilder<()> {
                 node: elem.into(),
                 after_remove: Vec::new(),
                 aborts: Vec::new(),
+                children: Vec::new(),
             },
             _marker: PhantomData,
         }
@@ -166,15 +109,8 @@ impl TagBuilder<()> {
     }
 
     pub fn register_future<F: Future<Output = ()> + 'static>(&mut self, f: F) {
-        let (handle, reg) = AbortHandle::new_pair();
-        let f = Abortable::new(f, reg);
-        self.node.aborts.push(handle);
-        // TODO: add a spawn_local_boxed method to wasm_bindgen_futures to
-        // allow for a non-generic helper function that doesn't do double-boxing
-        // (spawn_local boxes the future)
-        spawn_local(async move {
-            f.await.ok();
-        });
+        let guard = AppContext::spawn_abortable(f);
+        self.node.aborts.push(guard);
     }
 
     pub fn add_after_remove<F: FnOnce() + 'static>(&mut self, f: F) {
@@ -198,50 +134,14 @@ impl TagBuilder<()> {
         self
     }
 
+    // Attributes.
+
     pub fn add_attr<'a, I: Into<DomStr<'a>>>(&mut self, attr: Attr, value: I) {
         set_attribute(self.elem(), attr, value.into());
     }
 
     pub fn attr<'a, I: Into<DomStr<'a>>>(self, attr: Attr, value: I) -> Self {
         set_attribute(self.elem(), attr, value.into());
-        self
-    }
-
-    pub fn style_raw<'a, I: Into<DomStr<'a>>>(self, value: I) -> Self {
-        set_attribute(self.elem(), Attr::Style, value.into());
-        self
-    }
-
-    pub fn set_style<'a, I: Into<DomStr<'a>>>(&mut self, style: Style, value: I) {
-        set_style(self.elem(), style, value.into());
-    }
-
-    #[inline]
-    pub fn style<'a, I: Into<DomStr<'a>>>(mut self, style: Style, value: I) -> Self {
-        self.set_style(style, value);
-        self
-    }
-
-    pub fn add_style_signal<V, S>(&mut self, style: Style, signal: S)
-    where
-        V: Into<DomStr<'static>>,
-        S: Signal<Item = V> + 'static,
-    {
-        let elem = self.elem().clone();
-        let f = signal.for_each(move |value| {
-            set_style(&elem, style, value.into());
-            async {}
-        });
-        self.register_future(f);
-    }
-
-    #[inline]
-    pub fn style_signal<V, S>(mut self, style: Style, signal: S) -> Self
-    where
-        V: Into<DomStr<'static>>,
-        S: Signal<Item = V> + 'static,
-    {
-        self.add_style_signal(style, signal);
         self
     }
 
@@ -325,13 +225,7 @@ impl TagBuilder<()> {
         self
     }
 
-    pub fn add_class<'a, I>(&mut self, class: I)
-    where
-        I: Into<DomStr<'a>>,
-    {
-        let value = class.into();
-        elem_add_class(self.elem(), &value);
-    }
+    // Class.
 
     #[inline]
     pub fn class<'a, I>(mut self, class: I) -> Self
@@ -513,6 +407,54 @@ impl TagBuilder<()> {
         }));
     }
 
+    // Style.
+
+    pub fn style_raw<'a, I: Into<DomStr<'a>>>(self, value: I) -> Self {
+        set_attribute(self.elem(), Attr::Style, value.into());
+        self
+    }
+
+    pub fn set_style<'a, I: Into<DomStr<'a>>>(&mut self, style: Style, value: I) {
+        set_style(self.elem(), style, value.into());
+    }
+
+    #[inline]
+    pub fn style<'a, I: Into<DomStr<'a>>>(mut self, style: Style, value: I) -> Self {
+        self.set_style(style, value);
+        self
+    }
+
+    pub fn add_style_signal<V, S>(&mut self, style: Style, signal: S)
+    where
+        V: Into<DomStr<'static>>,
+        S: Signal<Item = V> + 'static,
+    {
+        let elem = self.elem().clone();
+        let f = signal.for_each(move |value| {
+            set_style(&elem, style, value.into());
+            async {}
+        });
+        self.register_future(f);
+    }
+
+    #[inline]
+    pub fn style_signal<V, S>(mut self, style: Style, signal: S) -> Self
+    where
+        V: Into<DomStr<'static>>,
+        S: Signal<Item = V> + 'static,
+    {
+        self.add_style_signal(style, signal);
+        self
+    }
+
+    pub fn add_class<'a, I>(&mut self, class: I)
+    where
+        I: Into<DomStr<'a>>,
+    {
+        let value = class.into();
+        elem_add_class(self.elem(), &value);
+    }
+
     pub fn add_text<'a>(&mut self, value: DomStr<'a>) {
         let text = create_text(value);
         self.node.node.append_child(&text).unwrap();
@@ -552,234 +494,9 @@ impl TagBuilder<()> {
         self
     }
 
-    fn add_node(&mut self, mut node: Node) {
-        // TODO use custom binding for efficiency?
-        self.node.node.append_child(&node.node).unwrap();
-        self.node.after_remove.extend(node.after_remove.drain(..));
-        self.node.aborts.extend(node.aborts.drain(..));
-    }
+    // Events.
 
-    #[inline]
-    pub fn add_child(&mut self, child: TagBuilder) {
-        self.add_node(child.node);
-    }
-
-    pub fn child(mut self, child: TagBuilder) -> Self {
-        self.add_child(child);
-        self
-    }
-
-    pub fn add_signal<T, S>(&mut self, signal: S)
-    where
-        T: Into<View>,
-        S: Signal<Item = T> + 'static,
-    {
-        let parent = self.elem().clone();
-        // TODO: use cache!
-        // TODO: use something other than a span? maybe a comment node?
-        let marker = create_empty_node();
-        // TODO use custom binding for efficiency?
-        parent.append_child(&marker).unwrap();
-
-        let mut current_view = View::Empty;
-
-        let f = signal.for_each(move |view| {
-            current_view = match (view.into(), std::mem::take(&mut current_view)) {
-                (View::Empty, View::Empty) => View::Empty,
-                (View::Empty, View::Node(old)) => {
-                    parent.replace_child(&marker, &old.node).unwrap();
-                    View::Empty
-                }
-                (View::Empty, View::Fragment(_)) => {
-                    todo!()
-                }
-                (View::Node(new_node), View::Empty) => {
-                    parent.replace_child(&new_node.node, &marker).unwrap();
-                    View::Node(new_node)
-                }
-                (View::Node(new_node), View::Node(old_node)) => {
-                    parent
-                        .replace_child(&new_node.node, &old_node.node)
-                        .unwrap();
-                    View::Node(new_node)
-                }
-                (View::Node(_new_node), View::Fragment(_f)) => {
-                    todo!()
-                }
-                (View::Fragment(_), _) => {
-                    todo!()
-                }
-            };
-
-            async {}
-        });
-        self.register_future(f);
-    }
-
-    #[inline]
-    pub fn signal<V, S>(mut self, signal: S) -> Self
-    where
-        V: Into<View>,
-        S: Signal<Item = V> + 'static,
-    {
-        self.add_signal(signal);
-        self
-    }
-
-    pub fn add_signal_vec<V, S, R>(&mut self, signal: S, render: R, fallback: Option<TagBuilder>)
-    where
-        S: SignalVec<Item = V> + 'static,
-        R: Fn(&V) -> Node + 'static,
-    {
-        let parent = self.elem().clone();
-        // TODO: use cache!
-        // TODO: use something other than a span? maybe a comment node?
-        let marker = create_empty_node();
-
-        let mut fallback_visible = if let Some(e) = &fallback {
-            parent.append_child(e.elem()).unwrap();
-            true
-        } else {
-            false
-        };
-
-        // TODO use custom binding for efficiency?
-
-        parent.append_child(&marker).unwrap();
-
-        let mut children = Vec::<Node>::new();
-
-        let f = signal.for_each(move |patch| {
-            match patch {
-                VecDiff::Replace { values } => {
-                    tracing::warn!("VecDiff::Replace {}", values.len());
-                    children.drain(..).for_each(|child| {
-                        parent.remove_child(&child.node).unwrap();
-                    });
-
-                    if values.is_empty() && !fallback_visible {
-                        if let Some(e) = fallback.as_ref() {
-                            parent.insert_before(e.elem(), Some(&marker)).unwrap();
-                            fallback_visible = true;
-                        }
-                    } else {
-                        if fallback_visible {
-                            parent
-                                .remove_child(fallback.as_ref().unwrap().elem())
-                                .unwrap();
-                            fallback_visible = false;
-                        }
-                        for value in values {
-                            let child = render(&value);
-                            parent.insert_before(&child.node, Some(&marker)).unwrap();
-                            children.push(child);
-                        }
-                    }
-                }
-                VecDiff::InsertAt { index, value } => {
-                    tracing::warn!("VecDiff::InsertAt {}", index);
-                    if fallback_visible {
-                        parent
-                            .remove_child(fallback.as_ref().unwrap().elem())
-                            .unwrap();
-                        fallback_visible = false;
-                    }
-
-                    let child = render(&value);
-                    if index == 0 {
-                        parent.prepend_with_node_1(&child.node).unwrap();
-                    }
-                    children.insert(0, child);
-                }
-                VecDiff::UpdateAt { index: _, value: _ } => {
-                    todo!()
-                }
-                VecDiff::RemoveAt { index } => {
-                    tracing::warn!("VecDiff::RemoveAt {}", index);
-                    let removed = children.remove(index);
-                    parent.remove_child(&removed.node).unwrap();
-
-                    if children.is_empty() && !fallback_visible {
-                        if let Some(e) = fallback.as_ref() {
-                            parent.insert_before(e.elem(), Some(&marker)).unwrap();
-                            fallback_visible = true;
-                        }
-                    }
-                }
-                VecDiff::Move {
-                    old_index: _,
-                    new_index: _,
-                } => todo!(),
-                VecDiff::Push { value } => {
-                    tracing::warn!("VecDiff::Push");
-                    let child = render(&value);
-                    parent.insert_before(&child.node, Some(&marker)).unwrap();
-                    children.push(child);
-
-                    if fallback_visible {
-                        parent
-                            .remove_child(fallback.as_ref().unwrap().elem())
-                            .unwrap();
-                        fallback_visible = false;
-                    }
-                }
-                VecDiff::Pop {} => {
-                    tracing::warn!("VecDiff::Pop");
-                    if let Some(old) = children.pop() {
-                        parent.remove_child(&old.node).unwrap();
-                    }
-
-                    if children.is_empty() && !fallback_visible {
-                        if let Some(e) = fallback.as_ref() {
-                            parent.insert_before(e.elem(), Some(&marker)).unwrap();
-                            fallback_visible = true;
-                        }
-                    }
-                }
-                VecDiff::Clear {} => {
-                    tracing::warn!("VecDiff::Clear");
-                    children.drain(..).for_each(|child| {
-                        parent.remove_child(&child.node).unwrap();
-                    });
-
-                    if !fallback_visible {
-                        if let Some(e) = fallback.as_ref() {
-                            parent.insert_before(e.elem(), Some(&marker)).unwrap();
-                            fallback_visible = true;
-                        }
-                    }
-                }
-            }
-            async {}
-        });
-
-        self.register_future(f);
-    }
-
-    pub fn signal_vec<V, S, R>(mut self, signal: S, render: R) -> Self
-    where
-        S: SignalVec<Item = V> + 'static,
-        R: Fn(&V) -> Node + 'static,
-    {
-        self.add_signal_vec(signal, render, None);
-        self
-    }
-
-    pub fn signal_vec_with_fallback<V, S, R>(
-        mut self,
-        signal: S,
-        render: R,
-        fallback: TagBuilder,
-    ) -> Self
-    where
-        S: SignalVec<Item = V> + 'static,
-        R: Fn(&V) -> Node + 'static,
-    {
-        self.add_signal_vec(signal, render, Some(fallback));
-        self
-    }
-
-    pub fn add_event_listener<F>(&mut self, event: Event, mut handler: F)
+    pub fn add_event_listener<F>(&mut self, event: Ev, mut handler: F)
     where
         F: FnMut(web_sys::Event) + 'static,
     {
@@ -796,7 +513,7 @@ impl TagBuilder<()> {
         }));
     }
 
-    pub fn add_event_listener_cast<E, F>(&mut self, event: Event, mut handler: F)
+    pub fn add_event_listener_cast<E, F>(&mut self, event: Ev, mut handler: F)
     where
         E: AsRef<web_sys::Event> + JsCast,
         F: FnMut(E) + 'static,
@@ -846,13 +563,108 @@ impl TagBuilder<()> {
         self
     }
 
-    pub fn on_event<F>(mut self, event: Event, handler: F) -> Self
+    pub fn on_event<F>(mut self, event: Ev, handler: F) -> Self
     where
         F: Fn(web_sys::Event) + 'static,
     {
         self.add_event_listener(event, handler);
         self
     }
+
+    // Node.
+
+    pub fn add_node(&mut self, node: Node) {
+        // TODO use custom binding for efficiency?
+        self.node.node.append_child(&node.node).unwrap();
+
+        // TODO: only keep nodes that have event handlers, otherwise add fold
+        // them into the current node with code below.
+        // self.node.after_remove.extend(node.after_remove.drain(..));
+        // self.node.aborts.extend(node.aborts.drain(..));
+
+        self.node.children.push(RetainedView::Node(node));
+    }
+
+    #[inline]
+    pub fn add_tag(&mut self, child: TagBuilder) {
+        self.add_node(child.node);
+    }
+
+    pub fn tag(mut self, child: TagBuilder) -> Self {
+        self.add_tag(child);
+        self
+    }
+
+    // Signal.
+
+    pub fn add_signal_view(&mut self, sig: SignalView) {
+        sig.attach(self.node.node());
+    }
+
+    pub fn add_signal<T, S>(&mut self, signal: S)
+    where
+        T: Into<View>,
+        S: Signal<Item = T> + 'static,
+    {
+        // TODO: add single-method constructor that already receives the parent?
+        let sig = SignalView::new(signal);
+        sig.attach(self.node.node());
+        self.node.children.push(RetainedView::Signal(sig));
+    }
+
+    #[inline]
+    pub fn signal<V, S>(mut self, signal: S) -> Self
+    where
+        V: Into<View>,
+        S: Signal<Item = V> + 'static,
+    {
+        self.add_signal(signal);
+        self
+    }
+
+    // SignalVec.
+
+    pub fn add_signal_vec_view(&mut self, view: SignalVecView) {
+        view.attach(self.node.node());
+        self.node.children.push(RetainedView::SignalVec(view));
+    }
+
+    pub fn add_signal_vec<T, S, O, R>(&mut self, signal: S, render: R, fallback: Option<View>)
+    where
+        S: SignalVec<Item = T> + 'static,
+        R: Fn(&T) -> O + 'static,
+        O: Render,
+    {
+        self.add_signal_vec_view(SignalVecView::new(signal, render, fallback))
+    }
+
+    pub fn signal_vec<T, S, O, R>(mut self, signal: S, render: R) -> Self
+    where
+        S: SignalVec<Item = T> + 'static,
+        R: Fn(&T) -> O + 'static,
+        O: Render,
+    {
+        self.add_signal_vec(signal, render, None);
+        self
+    }
+
+    pub fn signal_vec_with_fallback<T, S, O, R, F>(
+        mut self,
+        signal: S,
+        render: R,
+        fallback: F,
+    ) -> Self
+    where
+        S: SignalVec<Item = T> + 'static,
+        R: Fn(&T) -> O + 'static,
+        O: Render,
+        F: Render,
+    {
+        self.add_signal_vec(signal, render, Some(fallback.render()));
+        self
+    }
+
+    // Component.
 
     pub fn add_component<C: Component>(&mut self, props: C::Properties) {
         let tag = build_component::<C>(props);
@@ -865,8 +677,25 @@ impl TagBuilder<()> {
         self
     }
 
-    pub fn and<A: Apply>(mut self, apply: A) -> Self {
-        apply.apply(&mut self);
+    pub fn add_view(&mut self, view: View) {
+        match view {
+            View::Empty => {}
+            View::Node(n) => {
+                n.attach(self.elem());
+                self.node.children.push(RetainedView::Node(n));
+            }
+            View::Fragment(_) => todo!(),
+            View::Signal(s) => {
+                self.add_signal_view(s);
+            }
+            View::SignalVec(s) => {
+                self.add_signal_vec_view(s);
+            }
+        }
+    }
+
+    pub fn and<A: Apply>(mut self, item: A) -> Self {
+        item.apply(&mut self);
         self
     }
 
@@ -893,13 +722,19 @@ impl TagBuilder<()> {
     }
 }
 
+impl From<TagBuilder> for View {
+    fn from(t: TagBuilder) -> Self {
+        Self::Node(t.build())
+    }
+}
+
 pub trait Render {
     fn render(self) -> View;
 }
 
 impl<R: Render> Apply for R {
     fn apply(self, tag: &mut TagBuilder) {
-        self.render().apply(tag);
+        tag.add_view(self.render());
     }
 }
 
@@ -943,29 +778,21 @@ impl<'a> Apply for DomStr<'a> {
     }
 }
 
-impl Apply for TagBuilder {
-    fn apply(self, tag: &mut TagBuilder) {
-        tag.add_child(self);
+impl Render for Node {
+    fn render(self) -> View {
+        View::Node(self)
     }
 }
 
-impl Apply for Node {
-    fn apply(self, tag: &mut TagBuilder) {
-        tag.add_node(self);
+impl Render for TagBuilder {
+    fn render(self) -> View {
+        self.node.render()
     }
 }
 
-impl Apply for View {
-    fn apply(self, tag: &mut TagBuilder) {
-        match self {
-            View::Empty => {}
-            View::Node(n) => tag.add_node(n),
-            View::Fragment(Fragment { items }) => {
-                for item in items {
-                    item.apply(tag);
-                }
-            }
-        }
+impl Render for View {
+    fn render(self) -> View {
+        self
     }
 }
 
@@ -1046,7 +873,7 @@ where
             *keeper.borrow_mut() = Some(child);
         });
 
-        tag.add_child(wrapper);
+        tag.add_tag(wrapper);
     }
 }
 
@@ -1130,14 +957,14 @@ impl<V: Into<DomStr<'static>>, S: Signal<Item = Option<V>> + 'static>
 }
 
 pub trait EventHandlerApply<V> {
-    fn event_handler_apply(self, event: Event, target: &mut TagBuilder);
+    fn event_handler_apply(self, event: Ev, target: &mut TagBuilder);
 }
 
 impl<F> EventHandlerApply<fn()> for F
 where
     F: FnMut() + 'static,
 {
-    fn event_handler_apply(mut self, event: Event, target: &mut TagBuilder) {
+    fn event_handler_apply(mut self, event: Ev, target: &mut TagBuilder) {
         target.add_event_listener(event, move |_| self())
     }
 }
@@ -1147,7 +974,7 @@ where
     F: FnMut(E) + 'static,
     E: AsRef<web_sys::Event> + JsCast,
 {
-    fn event_handler_apply(self, event: Event, target: &mut TagBuilder) {
+    fn event_handler_apply(self, event: Ev, target: &mut TagBuilder) {
         target.add_event_listener_cast(event, self)
     }
 }

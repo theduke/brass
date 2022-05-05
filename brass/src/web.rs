@@ -60,7 +60,7 @@ macro_rules! make_str_enum {
     };
 }
 
-use crate::dom::{Attr, Event, Tag};
+use crate::dom::{Attr, Ev, Tag};
 
 pub fn window() -> &'static web_sys::Window {
     static mut WINDOW: once_cell::unsync::Lazy<web_sys::Window> =
@@ -248,6 +248,7 @@ extern "C" {
 }
 
 pub fn create_empty_node() -> web_sys::Node {
+    // TODO: use cache of nodes!
     __brass_create_empty_node()
 }
 
@@ -442,7 +443,7 @@ pub fn set_text_data(text: &web_sys::Text, value: &DomStr<'_>) {
 }
 
 #[allow(unused)]
-pub fn add_event_lister(target: &web_sys::EventTarget, event: Event, listener: &js_sys::Function) {
+pub fn add_event_lister(target: &web_sys::EventTarget, event: Ev, listener: &js_sys::Function) {
     unsafe {
         __brass_add_event_listener(target, event.as_js_string(), listener);
     }

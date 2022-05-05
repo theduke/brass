@@ -1,62 +1,144 @@
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-use wasm_bindgen::JsCast;
+use futures_signals::{signal::Mutable, signal_vec::MutableVec};
+use wasm_bindgen::JsValue;
+use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::wasm_bindgen_test;
 
-use brass::view;
+use brass::{
+    dom::builder::{div, span},
+    view,
+};
+
+fn get_root() -> web_sys::Element {
+    let doc = brass::web::window().document().unwrap();
+    if let Some(elem) = doc.get_element_by_id("testapp") {
+        elem.remove();
+    }
+
+    let elem = doc.create_element("div").unwrap();
+    doc.body().unwrap().append_child(&elem).unwrap();
+    elem
+}
+
+fn elem_by_id(id: &str) -> web_sys::Element {
+    brass::web::window()
+        .document()
+        .unwrap()
+        .get_element_by_id(id)
+        .unwrap()
+}
+
+async fn tick() {
+    let promise = js_sys::Promise::resolve(&JsValue::NULL);
+    JsFuture::from(promise).await.unwrap();
+}
+
+#[wasm_bindgen_test]
+async fn test_signal() {
+    let mutable = Mutable::new("hello".to_string());
+
+    let sig = mutable.signal_ref(|v| div().and(v));
+
+    brass::launch(get_root(), || {
+        div().attr(brass::dom::Attr::Id, "test-signal").signal(sig)
+    });
+
+    // TimeoutFuture::new(Duration::from_millis(10)).await;
+    tick().await;
+
+    let elem = elem_by_id("test-signal");
+    assert_eq!(elem.inner_html(), "<div>hello</div>");
+
+    mutable.set("v2".to_string());
+    tick().await;
+    assert_eq!(elem.inner_html(), "<div>v2</div>");
+}
+
+#[wasm_bindgen_test]
+async fn test_signal_vec_view() {
+    let mvec = MutableVec::<&'static str>::new();
+
+    let sig = mvec.signal_vec_cloned();
+
+    brass::launch(get_root(), || {
+        div()
+            .attr(brass::dom::Attr::Id, "test_signal_vec_view")
+            .signal_vec(sig, |x| span().and(*x))
+    });
+
+    let elem = elem_by_id("test_signal_vec_view");
+
+    tick().await;
+    assert_eq!(elem.inner_html(), "<!---->");
+
+    mvec.lock_mut().push("a");
+    tick().await;
+    assert_eq!(elem.inner_html(), "<span>a</span><!---->");
+
+    mvec.lock_mut().push("b");
+    mvec.lock_mut().push("c");
+    tick().await;
+    assert_eq!(
+        elem.inner_html(),
+        "<span>a</span><span>b</span><span>c</span><!---->"
+    );
+
+    mvec.lock_mut().set(1, "B");
+    tick().await;
+    assert_eq!(
+        elem.inner_html(),
+        "<span>a</span><span>B</span><span>c</span><!---->"
+    );
+
+    mvec.lock_mut().remove(1);
+    tick().await;
+    assert_eq!(elem.inner_html(), "<span>a</span><span>c</span><!---->");
+
+    mvec.lock_mut().insert(1, "bb");
+    tick().await;
+    assert_eq!(
+        elem.inner_html(),
+        "<span>a</span><span>bb</span><span>c</span><!---->"
+    );
+
+    mvec.lock_mut().clear();
+    tick().await;
+    assert_eq!(elem.inner_html(), "<!---->");
+}
 
 #[wasm_bindgen_test]
 fn test_view() {
-    let there = "there";
+    brass::launch(get_root(), || {
+        let there = "there";
 
-    let style = brass::signal::signal::Mutable::new("display: block;");
+        let style = brass::signal::signal::Mutable::new("display: block;");
 
-    let n = view! {
-        div(
-            class="lala"
-            style=style.signal()
-            onMouseMove=|_e: web_sys::MouseEvent| {
+        view! {
+            div(
+                id="test_view"
+                class="lala"
+                style=style.signal()
+                onMouseMove=|_e: web_sys::MouseEvent| {
 
-            }
-            onClick={|| {
+                }
+                onClick={|| {
 
-            }}
-        ) [
-            p [
-                "hello"
-                {there}
+                }}
+            ) [
+                p [
+                    "hello"
+                    {there}
+                ]
             ]
-        ]
-    };
+        }
+    });
 
-    let s = n
-        .as_node()
-        .unwrap()
-        .node
-        .dyn_ref::<web_sys::Element>()
-        .unwrap()
-        .outer_html();
-    assert_eq!(s, r#"<div class="lala"><p>hellothere</p></div>"#);
+    let html = elem_by_id("test_view").outer_html();
+    assert_eq!(
+        html,
+        r#"<div id="test_view" class="lala"><p>hellothere</p></div>"#
+    );
 }
-
-// use brass::{
-//     dom::Attr,
-//     vdom::{self, div, event::ClickEvent, Ref},
-//     Callback,
-// };
-
-// wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
-
-// fn get_root() -> web_sys::Element {
-//     let doc = brass::util::document();
-//     if let Some(elem) = doc.get_element_by_id("testapp") {
-//         elem.remove();
-//     }
-
-//     let elem = doc.create_element("div").unwrap();
-//     doc.body().unwrap().append_child(&elem).unwrap();
-//     elem
-// }
 
 // // Refs.
 

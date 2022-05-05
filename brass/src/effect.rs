@@ -1,32 +1,19 @@
 use std::convert::TryInto;
 
-use futures::{
-    future::{AbortHandle, Abortable},
-    Future,
-};
+use futures::Future;
 use wasm_bindgen::{prelude::Closure, JsCast};
-use wasm_bindgen_futures::spawn_local;
 
-use crate::web::window;
+use crate::{context::AppContext, dom::AbortGuard, web::window};
 
 #[must_use]
 pub struct EffectGuard {
-    handle: AbortHandle,
-}
-
-impl Drop for EffectGuard {
-    fn drop(&mut self) {
-        self.handle.abort();
-    }
+    _handle: AbortGuard,
 }
 
 pub fn spawn_guarded<F: Future<Output = ()> + 'static>(f: F) -> EffectGuard {
-    let (handle, reg) = AbortHandle::new_pair();
-    let f = Abortable::new(f, reg);
-    spawn_local(async move {
-        f.await.ok();
-    });
-    EffectGuard { handle }
+    let guard = AppContext::spawn_abortable(f);
+
+    EffectGuard { _handle: guard }
 }
 
 #[must_use]
@@ -57,6 +44,34 @@ pub fn set_timeout(duration: std::time::Duration, f: impl FnOnce() + 'static) ->
     TimeoutGuard {
         _closure: closure,
         id,
+    }
+}
+
+pub struct TimeoutFuture {
+    _guard: TimeoutGuard,
+    receiver: futures::channel::oneshot::Receiver<()>,
+}
+
+impl TimeoutFuture {
+    pub fn new(duration: std::time::Duration) -> Self {
+        let (tx, receiver) = futures::channel::oneshot::channel();
+
+        let _guard = set_timeout(duration, move || {
+            tx.send(()).ok();
+        });
+
+        Self { _guard, receiver }
+    }
+}
+
+impl std::future::Future for TimeoutFuture {
+    type Output = ();
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::pin::Pin::new(&mut self.receiver).poll(cx).map(|_| ())
     }
 }
 
@@ -93,7 +108,7 @@ pub fn set_interval(duration: std::time::Duration, mut f: impl FnMut() + 'static
 
 #[must_use]
 pub struct EventSubscription {
-    event: crate::dom::Event,
+    event: crate::dom::Ev,
     target: web_sys::EventTarget,
     closure: Closure<dyn Fn(web_sys::Event)>,
 }
@@ -101,7 +116,7 @@ pub struct EventSubscription {
 impl EventSubscription {
     pub fn subscribe<E: wasm_bindgen::JsCast + 'static, F: Fn(E) + 'static>(
         target: web_sys::EventTarget,
-        event: crate::dom::Event,
+        event: crate::dom::Ev,
         callback: F,
     ) -> Self {
         // TODO: use callback cache
