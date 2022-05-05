@@ -10,11 +10,10 @@ use wasm_bindgen::JsCast;
 
 use crate::{
     component::{build_component, Component},
-    context::AppContext,
+    context::{AppContext, EventHandlerRef},
     web::{
-        self, add_event_lister, create_element, create_text, elem_add_class, elem_remove_class,
-        elem_set_class_js, empty_string, remove_attr, set_attribute, set_style, set_text_data,
-        DomStr,
+        self, create_element, create_text, elem_add_class, elem_remove_class, elem_set_class_js,
+        empty_string, remove_attr, set_attribute, set_style, set_text_data, DomStr,
     },
 };
 
@@ -35,9 +34,9 @@ impl From<Fragment> for View {
 
 pub struct Node {
     node: web_sys::Node,
+    events: Vec<EventHandlerRef>,
     after_remove: Vec<Box<dyn FnOnce()>>,
     aborts: Vec<AbortGuard>,
-
     children: Vec<RetainedView>,
 }
 
@@ -55,6 +54,7 @@ impl Node {
         let text = web::create_text(value);
         Self {
             node: text.into(),
+            events: Vec::new(),
             after_remove: Vec::new(),
             aborts: Vec::new(),
             children: Vec::new(),
@@ -88,6 +88,7 @@ impl TagBuilder<()> {
         Self {
             node: Node {
                 node: elem.into(),
+                events: Vec::new(),
                 after_remove: Vec::new(),
                 aborts: Vec::new(),
                 children: Vec::new(),
@@ -496,21 +497,12 @@ impl TagBuilder<()> {
 
     // Events.
 
-    pub fn add_event_listener<F>(&mut self, event: Ev, mut handler: F)
+    pub fn add_event_listener<F>(&mut self, event: Ev, handler: F)
     where
         F: FnMut(web_sys::Event) + 'static,
     {
-        // TODO: use global event handler.
-        // TODO: use callback cache.
-        let callback =
-            wasm_bindgen::closure::Closure::wrap(Box::new(move |event: web_sys::Event| {
-                handler(event);
-            }) as Box<dyn FnMut(web_sys::Event)>);
-
-        add_event_lister(self.elem(), event, callback.as_ref().unchecked_ref());
-        self.node.after_remove.push(Box::new(move || {
-            std::mem::drop(callback);
-        }));
+        let evref = AppContext::create_event_listener(event, handler, self.elem());
+        self.node.events.push(evref);
     }
 
     pub fn add_event_listener_cast<E, F>(&mut self, event: Ev, mut handler: F)
@@ -518,28 +510,20 @@ impl TagBuilder<()> {
         E: AsRef<web_sys::Event> + JsCast,
         F: FnMut(E) + 'static,
     {
-        // TODO: use global event handler.
-        // TODO: use callback cache.
-        let callback =
-            wasm_bindgen::closure::Closure::wrap(Box::new(move |raw_event: web_sys::Event| {
-                match raw_event.dyn_into::<E>() {
-                    Ok(event) => {
-                        handler(event);
-                    }
-                    Err(err) => {
-                        panic!(
-                        "Event handler received invalid invalid event type (Expected {}) - {:?}",
-                        std::any::type_name::<E>(),
-                        err
-                    );
-                    }
-                }
-            }) as Box<dyn FnMut(web_sys::Event)>);
+        let wrapped_handler = move |raw_event: web_sys::Event| match raw_event.dyn_into::<E>() {
+            Ok(event) => {
+                handler(event);
+            }
+            Err(err) => {
+                tracing::error!(
+                    "Event handler received invalid invalid event type (Expected {}) - {:?}",
+                    std::any::type_name::<E>(),
+                    err
+                );
+            }
+        };
 
-        add_event_lister(self.elem(), event, callback.as_ref().unchecked_ref());
-        self.node.after_remove.push(Box::new(move || {
-            std::mem::drop(callback);
-        }));
+        self.add_event_listener(event, wrapped_handler);
     }
 
     pub fn add_dom_event_listener<E, F>(&mut self, mut handler: F)

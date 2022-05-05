@@ -19,25 +19,6 @@ use web_sys::HtmlInputElement;
 //     }
 // }
 
-// #[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
-// pub(crate) struct EventHandlerId(u64);
-
-// impl EventHandlerId {
-//     pub fn new_zero() -> Self {
-//         Self(0)
-
-//     }
-
-//     pub fn inc(&self) -> Self {
-//         Self(self.0 + 1)
-//     }
-// }
-
-// pub(crate) struct EventHandler {
-//     id: EventHandlerId,
-//     handler: Box<dyn FnMut(&Event<web_sys::Event>)>,
-// }
-
 pub trait DomEvent: Sized {
     fn event_type() -> crate::dom::Ev;
     fn from_dom(ev: web_sys::Event) -> Option<Self>;

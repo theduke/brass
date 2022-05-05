@@ -1,12 +1,13 @@
-use crate::dom::AbortGuard;
+use wasm_bindgen::{prelude::Closure, JsCast};
+
+use crate::dom::{AbortGuard, Ev};
 
 /// The "global" context for an app.
 pub(crate) struct AppContext {
-    // /// The highest assigned event handler id.
-    // max_event_handler_id: EventHandlerId,
-    // /// All event types that have handlers.
-    // /// Events not in this list are ignored.
-    // active_events: FnvHashMap<EventType, u32>,
+    /// All event types that have handlers.
+    /// Events not in this list are ignored.
+    active_events: Vec<EventHandler>,
+    event_freelist: Vec<EventHandlerId>,
 }
 
 static mut ACTIVE_CONTEXT: Option<&mut AppContext> = None;
@@ -14,8 +15,8 @@ static mut ACTIVE_CONTEXT: Option<&mut AppContext> = None;
 impl AppContext {
     pub fn new() -> Box<Self> {
         Box::new(Self {
-            // max_event_handler_id: EventHandlerId::new_zero(),
-            // active_events: FnvHashMap::default(),
+            active_events: Vec::new(),
+            event_freelist: Vec::new(),
         })
     }
 
@@ -56,6 +57,83 @@ impl AppContext {
         unsafe { ACTIVE_CONTEXT.as_mut().unwrap() }
     }
 
+    fn invoke_event_handler(&mut self, id: EventHandlerId, event: web_sys::Event) {
+        if let Some(handler) = self
+            .active_events
+            .get_mut(id.as_usize())
+            .and_then(|x| x.handler.as_mut())
+        {
+            (handler)(event);
+        } else {
+            tracing::error!("invoked event handler with invalid id");
+        }
+    }
+
+    pub fn create_event_listener<H>(
+        event: Ev,
+        callback: H,
+        target: &web_sys::Node,
+    ) -> EventHandlerRef
+    where
+        H: FnMut(web_sys::Event) + 'static,
+    {
+        let inner = Self::get_mut();
+
+        let callback: Box<dyn FnMut(web_sys::Event)> = Box::new(callback);
+
+        let handler = if let Some(h) = inner
+            .event_freelist
+            .pop()
+            .and_then(|x| inner.active_events.get_mut(x.0))
+        {
+            h.handler = Some(callback);
+            h
+        } else {
+            let id = EventHandlerId(inner.active_events.len());
+
+            let id2 = id.clone();
+            let inner2 = Self::get_mut();
+            let boxed =
+                Box::new(move |event: web_sys::Event| inner2.invoke_event_handler(id2, event))
+                    as Box<dyn FnMut(web_sys::Event)>;
+            let closure = wasm_bindgen::closure::Closure::wrap(boxed);
+
+            let h = EventHandler {
+                id,
+                closure,
+                handler: Some(callback),
+            };
+
+            inner.active_events.push(h);
+
+            inner.active_events.last_mut().unwrap()
+        };
+
+        crate::web::add_event_lister(target, event, handler.closure.as_ref().unchecked_ref());
+
+        EventHandlerRef(handler.id.clone())
+    }
+
+    fn return_event_handler(id: EventHandlerId) {
+        let inner = Self::get_mut();
+        let index = id.as_usize();
+
+        // If a lot of event handlers are created, and the newly returned one is
+        // the last id, drop it instead of enabling reuse.
+        if inner.event_freelist.len() > 500 && index == inner.event_freelist.len() - 1 {
+            let ev = inner.active_events.pop().unwrap();
+            debug_assert_eq!(ev.id.as_usize(), index);
+        } else {
+            let handler = inner
+                .active_events
+                .get_mut(index)
+                .expect("Invalid event handler id provided");
+            // Drop the callback to free up references.
+            handler.handler.take();
+            inner.event_freelist.push(id);
+        }
+    }
+
     pub fn spawn_abortable<F>(f: F) -> AbortGuard
     where
         F: std::future::Future<Output = ()> + 'static,
@@ -82,6 +160,29 @@ impl AppContext {
         wasm_bindgen_futures::spawn_local(async move {
             ContextFuture::new(context, f).await;
         });
+    }
+}
+
+#[derive(Clone, Copy, PartialEq, Eq, Hash, Debug)]
+struct EventHandlerId(usize);
+
+impl EventHandlerId {
+    pub fn as_usize(&self) -> usize {
+        self.0
+    }
+}
+
+struct EventHandler {
+    id: EventHandlerId,
+    closure: Closure<dyn FnMut(web_sys::Event)>,
+    handler: Option<Box<dyn FnMut(web_sys::Event)>>,
+}
+
+pub struct EventHandlerRef(EventHandlerId);
+
+impl Drop for EventHandlerRef {
+    fn drop(&mut self) {
+        AppContext::return_event_handler(self.0);
     }
 }
 

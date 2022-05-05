@@ -1,11 +1,14 @@
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
 use futures_signals::{signal::Mutable, signal_vec::MutableVec};
-use wasm_bindgen::JsValue;
+use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
 use wasm_bindgen_test::wasm_bindgen_test;
 
 use brass::{
-    dom::builder::{div, span},
+    dom::{
+        builder::{button, div, span},
+        Attr, ClickEvent,
+    },
     view,
 };
 
@@ -34,13 +37,54 @@ async fn tick() {
 }
 
 #[wasm_bindgen_test]
+async fn test_event_handler_click_simple() {
+    let value = Mutable::new(0);
+
+    let mut counter = Option::<web_sys::Element>::None;
+    let mut btnelem = Option::<web_sys::Element>::None;
+
+    let value2 = value.clone();
+
+    let btnref = &mut btnelem;
+    let counterref = &mut counter;
+    let sig = value.signal_ref(|v| div().and(v.to_string()));
+    brass::launch(get_root(), move || {
+        let btn = button().on(move |_: ClickEvent| {
+            *value2.lock_mut() += 1;
+        });
+        *btnref = Some(btn.elem().clone());
+        let counter = div().signal(sig);
+        *counterref = Some(counter.elem().clone());
+
+        div().and(btn).and(counter)
+    });
+
+    let btn = btnelem.unwrap().dyn_into::<web_sys::HtmlElement>().unwrap();
+    let counter = counter.unwrap();
+
+    tick().await;
+
+    assert_eq!(counter.inner_html(), "<div>0</div>");
+
+    btn.click();
+    tick().await;
+    assert_eq!(counter.inner_html(), "<div>1</div>");
+
+    btn.click();
+    btn.click();
+    btn.click();
+    tick().await;
+    assert_eq!(counter.inner_html(), "<div>4</div>");
+}
+
+#[wasm_bindgen_test]
 async fn test_signal() {
     let mutable = Mutable::new("hello".to_string());
 
     let sig = mutable.signal_ref(|v| div().and(v));
 
     brass::launch(get_root(), || {
-        div().attr(brass::dom::Attr::Id, "test-signal").signal(sig)
+        div().attr(Attr::Id, "test-signal").signal(sig)
     });
 
     // TimeoutFuture::new(Duration::from_millis(10)).await;
@@ -62,7 +106,7 @@ async fn test_signal_vec_view() {
 
     brass::launch(get_root(), || {
         div()
-            .attr(brass::dom::Attr::Id, "test_signal_vec_view")
+            .attr(Attr::Id, "test_signal_vec_view")
             .signal_vec(sig, |x| span().and(*x))
     });
 

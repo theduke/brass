@@ -1,5 +1,7 @@
 // mod strings;
 
+// #![warn(unused_crate_dependencies)]
+
 // NOTE: needs to be on top because it defines macros used elsewhere.
 #[macro_use]
 pub mod web;
