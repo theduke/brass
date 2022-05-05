@@ -1,2 +1,5 @@
 [alias]
 xtask = "run --manifest-path ./xtask/Cargo.toml --"
+
+[target.wasm32-unknown-unknown]
+runner = 'wasm-bindgen-test-runner'
