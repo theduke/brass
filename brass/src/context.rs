@@ -36,6 +36,11 @@ impl AppContext {
         r
     }
 
+    pub(crate) fn get_ref() -> AppContextRef {
+        let inner = Self::get_mut();
+        AppContextRef(inner)
+    }
+
     pub fn with<O, F>(self: &mut Box<Self>, f: F) -> O
     where
         F: FnOnce() -> O,
@@ -70,7 +75,11 @@ impl AppContext {
     }
 
     fn get_mut() -> &'static mut Self {
-        unsafe { ACTIVE_CONTEXT.as_mut().unwrap() }
+        unsafe {
+            ACTIVE_CONTEXT
+                .as_mut()
+                .expect("tried to acquire AppContext, but no app is active")
+        }
     }
 
     fn invoke_event_handler(&mut self, id: EventHandlerId, event: web_sys::Event) {
@@ -293,21 +302,33 @@ impl AppContext {
 
 pub struct AppContextRef(&'static mut AppContext);
 
+impl Clone for AppContextRef {
+    fn clone(&self) -> Self {
+        Self(self.as_mut())
+    }
+}
+
 impl AppContextRef {
-    pub fn with<O, F: FnOnce() -> O>(&mut self, f: F) -> O {
-        self.0.enter();
+    fn as_mut(&self) -> &'static mut AppContext {
+        unsafe { &mut *(self.0 as *const AppContext as *mut AppContext) }
+    }
+
+    pub fn with<O, F: FnOnce() -> O>(&self, f: F) -> O {
+        let inner = self.as_mut();
+        inner.enter();
         let out = f();
 
-        self.0.process_futures();
+        inner.process_futures();
         AppContext::leave();
         out
     }
 
-    pub async fn with_async<O, F: std::future::Future<Output = O>>(&mut self, f: F) -> O {
-        self.0.enter();
+    pub async fn with_async<O, F: std::future::Future<Output = O>>(&self, f: F) -> O {
+        let inner = self.as_mut();
+        inner.enter();
         let out = f.await;
 
-        self.0.process_futures();
+        inner.process_futures();
         AppContext::leave();
         out
     }

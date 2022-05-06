@@ -5,7 +5,10 @@ use std::{
     rc::{Rc, Weak},
 };
 
-use crate::dom::TagBuilder;
+use crate::{
+    context::{AppContext, AppContextRef},
+    dom::TagBuilder,
+};
 
 struct State<C> {
     state: Option<C>,
@@ -17,25 +20,36 @@ pub struct Context<'a, C> {
 
 impl<'a, C: Component> Context<'a, C> {
     pub fn handle(&self) -> Handle<C> {
-        Handle(Rc::downgrade(self.state))
+        Handle {
+            state: Rc::downgrade(self.state),
+            context: AppContext::get_ref(),
+        }
     }
 }
 
-pub struct Handle<C: Component>(Weak<RefCell<State<C>>>);
+pub struct Handle<C: Component> {
+    state: Weak<RefCell<State<C>>>,
+    context: AppContextRef,
+}
 
 impl<C: Component> Clone for Handle<C> {
     fn clone(&self) -> Self {
-        Self(self.0.clone())
+        Self {
+            state: self.state.clone(),
+            context: self.context.clone(),
+        }
     }
 }
 
 impl<C: Component> Handle<C> {
     // FIXME: proper error instead of ()
     pub fn apply(&self, f: impl FnOnce(&mut C, Context<'_, C>)) {
-        if let Some(state) = self.0.upgrade() {
+        if let Some(state) = self.state.upgrade() {
             let mut borrow = state.borrow_mut();
             if let Some(data) = borrow.state.as_mut() {
-                f(data, Context { state: &state });
+                self.context.with(|| {
+                    f(data, Context { state: &state });
+                });
             } else {
                 #[cfg(debug_assertions)]
                 tracing::warn!(
