@@ -1,4 +1,6 @@
 wasm_bindgen_test::wasm_bindgen_test_configure!(run_in_browser);
+use std::time::Duration;
+
 use futures_signals::{signal::Mutable, signal_vec::MutableVec};
 use wasm_bindgen::{JsCast, JsValue};
 use wasm_bindgen_futures::JsFuture;
@@ -9,6 +11,7 @@ use brass::{
         builder::{button, div, span},
         Attr, ClickEvent,
     },
+    effect::{set_timeout, TimeoutFuture},
     view,
 };
 
@@ -83,18 +86,17 @@ async fn test_signal() {
 
     let sig = mutable.signal_ref(|v| div().and(v));
 
-    brass::launch(get_root(), || {
+    let mut ctx = brass::launch(get_root(), || {
         div().attr(Attr::Id, "test-signal").signal(sig)
     });
-
-    // TimeoutFuture::new(Duration::from_millis(10)).await;
-    tick().await;
 
     let elem = elem_by_id("test-signal");
     assert_eq!(elem.inner_html(), "<div>hello</div>");
 
-    mutable.set("v2".to_string());
-    tick().await;
+    ctx.with(|| {
+        mutable.set("v2".to_string());
+    });
+
     assert_eq!(elem.inner_html(), "<div>v2</div>");
 }
 
@@ -104,7 +106,7 @@ async fn test_signal_vec_view() {
 
     let sig = mvec.signal_vec_cloned();
 
-    brass::launch(get_root(), || {
+    let mut ctx = brass::launch(get_root(), || {
         div()
             .attr(Attr::Id, "test_signal_vec_view")
             .signal_vec(sig, |x| span().and(*x))
@@ -112,42 +114,89 @@ async fn test_signal_vec_view() {
 
     let elem = elem_by_id("test_signal_vec_view");
 
-    tick().await;
     assert_eq!(elem.inner_html(), "<!---->");
 
-    mvec.lock_mut().push("a");
-    tick().await;
+    ctx.with(|| {
+        mvec.lock_mut().push("a");
+    });
     assert_eq!(elem.inner_html(), "<span>a</span><!---->");
 
-    mvec.lock_mut().push("b");
-    mvec.lock_mut().push("c");
-    tick().await;
+    ctx.with(|| {
+        mvec.lock_mut().push("b");
+        mvec.lock_mut().push("c");
+    });
     assert_eq!(
         elem.inner_html(),
         "<span>a</span><span>b</span><span>c</span><!---->"
     );
 
-    mvec.lock_mut().set(1, "B");
-    tick().await;
+    ctx.with(|| {
+        mvec.lock_mut().set(1, "B");
+    });
     assert_eq!(
         elem.inner_html(),
         "<span>a</span><span>B</span><span>c</span><!---->"
     );
 
-    mvec.lock_mut().remove(1);
-    tick().await;
+    ctx.with(|| {
+        mvec.lock_mut().remove(1);
+    });
     assert_eq!(elem.inner_html(), "<span>a</span><span>c</span><!---->");
 
-    mvec.lock_mut().insert(1, "bb");
+    ctx.with(|| {
+        mvec.lock_mut().insert(1, "bb");
+    });
     tick().await;
     assert_eq!(
         elem.inner_html(),
         "<span>a</span><span>bb</span><span>c</span><!---->"
     );
 
-    mvec.lock_mut().clear();
-    tick().await;
+    ctx.with(|| {
+        mvec.lock_mut().clear();
+    });
     assert_eq!(elem.inner_html(), "<!---->");
+}
+
+#[wasm_bindgen_test]
+async fn test_timeout() {
+    let mut btn = None;
+    let mut counter = None;
+
+    let mut ctx = brass::launch(get_root(), || {
+        let s = Mutable::new(0);
+
+        div()
+            .and(
+                div()
+                    .with_ref(&mut counter)
+                    .signal(s.signal_ref(|x| div().and(x.to_string()))),
+            )
+            .and(
+                button()
+                    .on(move |_: ClickEvent| {
+                        let s = s.clone();
+                        let guard = set_timeout(Duration::from_millis(1), move || {
+                            s.set(1);
+                        });
+
+                        // TODO: don't forget, this is a bad example for others
+                        // reading the code...
+                        std::mem::forget(guard);
+                    })
+                    .with_ref(&mut btn),
+            )
+    });
+
+    let btn = btn.unwrap().dyn_into::<web_sys::HtmlElement>().unwrap();
+
+    tick().await;
+    btn.click();
+
+    ctx.with_async(async { TimeoutFuture::new(Duration::from_millis(100)).await })
+        .await;
+
+    assert_eq!(counter.unwrap().inner_html(), "<div>1</div>");
 }
 
 #[wasm_bindgen_test]
@@ -180,7 +229,7 @@ fn test_view() {
     let html = elem_by_id("test_view").outer_html();
     assert_eq!(
         html,
-        r#"<div id="test_view" class="lala"><p>hellothere</p></div>"#
+        r#"<div id="test_view" class="lala" style="display: block;"><p>hellothere</p></div>"#
     );
 }
 

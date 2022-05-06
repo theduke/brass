@@ -233,7 +233,7 @@ impl SignalVecView {
         };
 
         let abortable_future = Abortable::new(f, reg);
-        AppContext::spawn_unguarded(async move {
+        AppContext::spawn_custom_executor_unguarded(async move {
             abortable_future.await.ok();
         });
 

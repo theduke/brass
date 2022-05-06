@@ -109,9 +109,23 @@ impl TagBuilder<()> {
         self.node.node.unchecked_ref()
     }
 
-    pub fn register_future<F: Future<Output = ()> + 'static>(&mut self, f: F) {
-        let guard = AppContext::spawn_abortable(f);
+    pub fn with_ref(self, target: &mut Option<web_sys::Element>) -> Self {
+        *target = Some(self.elem().clone());
+        self
+    }
+
+    fn register_future<F: Future<Output = ()> + 'static>(&mut self, f: F) {
+        let guard = AppContext::spawn_custom_executor_abortable(f);
         self.node.aborts.push(guard);
+    }
+
+    /// Spawn a future that is attached to this tag.
+    ///
+    /// If the tag is removed from the dom the future is aborted.
+    pub fn spawn<F: Future<Output = ()> + 'static>(mut self, f: F) -> Self {
+        let guard = AppContext::spawn_external_abortable(f);
+        self.node.aborts.push(guard);
+        self
     }
 
     pub fn add_after_remove<F: FnOnce() + 'static>(&mut self, f: F) {
@@ -501,7 +515,11 @@ impl TagBuilder<()> {
     where
         F: FnMut(web_sys::Event) + 'static,
     {
-        let evref = AppContext::create_event_listener(event, handler, self.elem());
+        let evref = AppContext::create_event_listener(
+            event,
+            handler,
+            self.elem().unchecked_ref::<web_sys::EventTarget>().clone(),
+        );
         self.node.events.push(evref);
     }
 

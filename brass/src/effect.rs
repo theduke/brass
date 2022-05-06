@@ -1,9 +1,11 @@
-use std::convert::TryInto;
-
 use futures::Future;
 use wasm_bindgen::{prelude::Closure, JsCast};
 
-use crate::{context::AppContext, dom::AbortGuard, web::window};
+use crate::{
+    context::{AppContext, EventHandlerRef},
+    dom::AbortGuard,
+    web::window,
+};
 
 #[must_use]
 pub struct EffectGuard {
@@ -11,15 +13,15 @@ pub struct EffectGuard {
 }
 
 pub fn spawn_guarded<F: Future<Output = ()> + 'static>(f: F) -> EffectGuard {
-    let guard = AppContext::spawn_abortable(f);
+    let guard = AppContext::spawn_external_abortable(f);
 
     EffectGuard { _handle: guard }
 }
 
 #[must_use]
 pub struct TimeoutGuard {
-    _closure: Closure<dyn FnMut()>,
-    id: i32,
+    pub(crate) _closure: Closure<dyn FnMut()>,
+    pub(crate) id: i32,
 }
 
 impl Drop for TimeoutGuard {
@@ -29,22 +31,7 @@ impl Drop for TimeoutGuard {
 }
 
 pub fn set_timeout(duration: std::time::Duration, f: impl FnOnce() + 'static) -> TimeoutGuard {
-    // TODO: use callback cache
-    let closure = Closure::once(move || {
-        f();
-    });
-
-    let id = window()
-        .set_timeout_with_callback_and_timeout_and_arguments_0(
-            closure.as_ref().unchecked_ref(),
-            duration.as_millis().try_into().unwrap(),
-        )
-        .unwrap();
-
-    TimeoutGuard {
-        _closure: closure,
-        id,
-    }
+    AppContext::create_timeout(duration, f)
 }
 
 pub struct TimeoutFuture {
@@ -77,8 +64,8 @@ impl std::future::Future for TimeoutFuture {
 
 #[must_use]
 pub struct IntervalGuard {
-    _closure: Closure<dyn FnMut()>,
-    id: i32,
+    pub(crate) _closure: Closure<dyn FnMut()>,
+    pub(crate) id: i32,
 }
 
 impl Drop for IntervalGuard {
@@ -87,31 +74,12 @@ impl Drop for IntervalGuard {
     }
 }
 
-pub fn set_interval(duration: std::time::Duration, mut f: impl FnMut() + 'static) -> IntervalGuard {
-    // TODO: use callback cache
-    let closure = Closure::wrap(Box::new(move || {
-        f();
-    }) as Box<dyn FnMut()>);
-
-    let id = window()
-        .set_interval_with_callback_and_timeout_and_arguments_0(
-            closure.as_ref().unchecked_ref(),
-            duration.as_millis().try_into().unwrap(),
-        )
-        .unwrap();
-
-    IntervalGuard {
-        _closure: closure,
-        id,
-    }
+pub fn set_interval(duration: std::time::Duration, f: impl FnMut() + 'static) -> IntervalGuard {
+    AppContext::create_interval(duration, f)
 }
 
 #[must_use]
-pub struct EventSubscription {
-    event: crate::dom::Ev,
-    target: web_sys::EventTarget,
-    closure: Closure<dyn Fn(web_sys::Event)>,
-}
+pub struct EventSubscription(EventHandlerRef);
 
 impl EventSubscription {
     pub fn subscribe<E: wasm_bindgen::JsCast + 'static, F: Fn(E) + 'static>(
@@ -119,32 +87,13 @@ impl EventSubscription {
         event: crate::dom::Ev,
         callback: F,
     ) -> Self {
-        // TODO: use callback cache
-        let boxed: Box<dyn Fn(web_sys::Event)> = Box::new(move |event: web_sys::Event| {
+        let wrapped = move |event: web_sys::Event| {
             if let Ok(typed_ev) = event.dyn_into::<E>() {
                 callback(typed_ev);
             }
-        });
-        let closure = wasm_bindgen::closure::Closure::wrap(boxed);
+        };
 
-        target
-            .add_event_listener_with_callback(event.as_str(), closure.as_ref().unchecked_ref())
-            .unwrap();
-        Self {
-            event,
-            target,
-            closure,
-        }
-    }
-}
-
-impl Drop for EventSubscription {
-    fn drop(&mut self) {
-        if let Err(_err) = self.target.remove_event_listener_with_callback(
-            self.event.as_str(),
-            self.closure.as_ref().unchecked_ref(),
-        ) {
-            tracing::error!("Could not remove EventSubscription event listener");
-        }
+        let r = AppContext::create_event_listener(event, wrapped, target);
+        Self(r)
     }
 }

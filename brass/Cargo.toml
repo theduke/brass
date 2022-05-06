@@ -11,7 +11,7 @@ default = ["macros"]
 
 
 [dependencies]
-futures = "0.3.17"
+futures = { version = "0.3.17", features = ["executor"]}
 futures-signals = "0.3.23"
 futures-util = "0.3.17"
 
