@@ -114,7 +114,7 @@ impl TagBuilder<()> {
         self
     }
 
-    fn register_future<F: Future<Output = ()> + 'static>(&mut self, f: F) {
+    pub fn spawn_ui<F: Future<Output = ()> + 'static>(&mut self, f: F) {
         let guard = AppContext::spawn_custom_executor_abortable(f);
         self.node.aborts.push(guard);
     }
@@ -182,7 +182,7 @@ impl TagBuilder<()> {
             set_attribute(&elem, attr, value.into());
             async {}
         });
-        self.register_future(f);
+        self.spawn_ui(f);
     }
 
     pub fn add_attr_signal_opt<V, S>(&mut self, attr: Attr, signal: S)
@@ -201,7 +201,7 @@ impl TagBuilder<()> {
             }
             async {}
         });
-        self.register_future(f);
+        self.spawn_ui(f);
     }
 
     #[inline]
@@ -228,7 +228,7 @@ impl TagBuilder<()> {
             }
             async {}
         });
-        self.register_future(f);
+        self.spawn_ui(f);
     }
 
     #[inline]
@@ -320,7 +320,7 @@ impl TagBuilder<()> {
     {
         let elem = self.elem().clone();
         let mut current = None;
-        self.register_future(signal.for_each(move |value| {
+        self.spawn_ui(signal.for_each(move |value| {
             if let Some(current) = current.take() {
                 elem_remove_class(&elem, &current);
             }
@@ -350,7 +350,7 @@ impl TagBuilder<()> {
 
         let elem = self.elem().clone();
         let mut is_added = false;
-        self.register_future(signal.for_each(move |flag| {
+        self.spawn_ui(signal.for_each(move |flag| {
             if flag {
                 if !is_added {
                     elem_add_class(&elem, &class);
@@ -387,7 +387,7 @@ impl TagBuilder<()> {
 
         let elem = self.elem().clone();
 
-        self.register_future(signal.for_each(move |diff| {
+        self.spawn_ui(signal.for_each(move |diff| {
             match diff {
                 VecDiff::Replace { values } => {
                     elem_set_class_js(&elem, empty_string());
@@ -449,7 +449,7 @@ impl TagBuilder<()> {
             set_style(&elem, style, value.into());
             async {}
         });
-        self.register_future(f);
+        self.spawn_ui(f);
     }
 
     #[inline]
@@ -496,7 +496,7 @@ impl TagBuilder<()> {
             set_text_data(&text, &value.into());
             async {}
         });
-        self.register_future(f);
+        self.spawn_ui(f);
     }
 
     #[inline]
@@ -869,7 +869,7 @@ where
         wrapper.add_bind(keeper.clone());
 
         let f = self.0;
-        wrapper.register_future(async move {
+        wrapper.spawn_ui(async move {
             let child = f.await;
             elem.append_child(child.elem()).ok();
             *keeper.borrow_mut() = Some(child);
